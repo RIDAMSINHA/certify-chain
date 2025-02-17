@@ -1,8 +1,15 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import contractABI from '../contracts/CertificateNFT.json';
 import contractConfig from '../contract-config.json';
 import { toast } from 'sonner';
+
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
 
 export function useContract() {
   const [contract, setContract] = useState<ethers.Contract | null>(null);
