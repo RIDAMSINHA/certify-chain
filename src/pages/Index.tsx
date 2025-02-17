@@ -1,6 +1,6 @@
 
 import { motion } from "framer-motion";
-import { Shield, Certificate, User } from "lucide-react";
+import { Shield, Scroll, User } from "lucide-react";
 import { useState } from "react";
 
 const Index = () => {
@@ -19,7 +19,7 @@ const Index = () => {
       description: "Instant and tamper-proof verification of certificates on the blockchain"
     },
     {
-      icon: Certificate,
+      icon: Scroll,
       title: "NFT Certificates",
       description: "Unique, non-transferable certificates issued as Soulbound NFTs"
     },
