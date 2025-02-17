@@ -1,19 +1,10 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Award, Shield, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useContract } from "@/hooks/useContract";
 import { motion } from "framer-motion";
-
-interface Certificate {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  created_at: string;
-  token_id: number;
-}
+import type { Certificate } from "@/types/certificate";
 
 const Dashboard = () => {
   const navigate = useNavigate();

@@ -25,7 +25,7 @@ export function useContract() {
           
           const contract = new ethers.Contract(
             contractConfig.contractAddress,
-            contractABI,
+            contractABI.abi,
             signer
           );
           setContract(contract);
