@@ -2,14 +2,26 @@
 import { motion } from "framer-motion";
 import { Shield, Scroll, User } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const [isConnecting, setIsConnecting] = useState(false);
+  const navigate = useNavigate();
 
   const handleConnect = async () => {
     setIsConnecting(true);
-    // Wallet connection logic will be implemented here
-    setTimeout(() => setIsConnecting(false), 1000);
+    try {
+      if (typeof window.ethereum !== "undefined") {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        navigate("/dashboard");
+      } else {
+        throw new Error("Please install MetaMask");
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   const features = [
