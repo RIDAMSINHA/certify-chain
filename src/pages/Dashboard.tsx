@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Award, Shield, User } from "lucide-react";
@@ -21,7 +22,14 @@ const Dashboard = () => {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        setCertificates(data || []);
+        
+        // Validate and transform the status field to ensure it matches the expected type
+        const validCertificates = (data || []).map(cert => ({
+          ...cert,
+          status: validateStatus(cert.status)
+        }));
+        
+        setCertificates(validCertificates);
       } catch (error) {
         console.error("Error fetching certificates:", error);
       } finally {
@@ -31,6 +39,14 @@ const Dashboard = () => {
 
     fetchCertificates();
   }, []);
+
+  // Helper function to validate status
+  const validateStatus = (status: string): Certificate['status'] => {
+    if (status === 'pending' || status === 'issued' || status === 'revoked') {
+      return status;
+    }
+    return 'pending'; // Default fallback if status is invalid
+  };
 
   const stats = [
     {

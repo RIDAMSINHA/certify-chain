@@ -9,14 +9,14 @@ interface CertificateMetadata {
 }
 
 export function useCertificates() {
-  const { contract } = useContract();
+  const { contract, signer } = useContract();
   const [isLoading, setIsLoading] = useState(false);
 
   const issueCertificateWithMetadata = async (
     recipientAddress: string,
     metadata: CertificateMetadata
   ) => {
-    if (!contract) {
+    if (!contract || !signer) {
       throw new Error('Contract not initialized');
     }
 
@@ -31,7 +31,7 @@ export function useCertificates() {
               ...metadata,
               recipientAddress,
             },
-            issuerAddress: await contract.signer.getAddress(),
+            issuerAddress: await signer.getAddress(),
           },
         }
       );
