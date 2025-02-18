@@ -26,13 +26,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         checkIssuerStatus(session.user.id);
+      } else {
+        setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkIssuerStatus(session.user.id);
+        await checkIssuerStatus(session.user.id);
+      } else {
+        setLoading(false);
       }
     });
 
@@ -40,16 +44,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const checkIssuerStatus = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('is_issuer')
-      .eq('id', userId)
-      .single();
+    try {
+      // First check if profile exists
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_issuer')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (!error && data) {
-      setIsIssuer(data.is_issuer);
+      if (profileError) throw profileError;
+
+      // If profile doesn't exist, create it
+      if (!profile) {
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData.user;
+        
+        if (user) {
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: userId,
+                is_issuer: user.user_metadata?.is_issuer || false,
+                name: user.user_metadata?.name || user.email,
+                wallet_address: user.user_metadata?.wallet_address || ''
+              }
+            ]);
+
+          if (insertError) throw insertError;
+
+          setIsIssuer(user.user_metadata?.is_issuer || false);
+        }
+      } else {
+        setIsIssuer(profile.is_issuer || false);
+      }
+    } catch (error) {
+      console.error('Error checking issuer status:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

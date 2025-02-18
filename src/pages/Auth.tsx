@@ -29,7 +29,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { error: signUpError, data } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -39,7 +39,25 @@ const Auth = () => {
             },
           },
         });
-        if (error) throw error;
+        
+        if (signUpError) throw signUpError;
+
+        // Create profile after successful signup
+        if (data.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: data.user.id,
+                name: formData.name,
+                is_issuer: formData.isIssuer,
+                wallet_address: '' // Initially empty
+              }
+            ]);
+
+          if (profileError) throw profileError;
+        }
+
         toast.success("Check your email to confirm your account");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -63,7 +81,10 @@ const Auth = () => {
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/`,
-        },
+          data: {
+            is_issuer: false // Default to regular user for OAuth signins
+          }
+        }
       });
       if (error) throw error;
     } catch (error) {
