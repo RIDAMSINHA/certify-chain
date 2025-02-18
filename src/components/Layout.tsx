@@ -1,6 +1,6 @@
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { 
   Award, 
@@ -9,39 +9,55 @@ import {
   FilePlus, 
   LayoutDashboard,
   Menu,
-  X
+  X,
+  LogOut
 } from "lucide-react";
+import { useAuth } from "@/providers/AuthProvider";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 const Layout = ({ children }: LayoutProps) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isIssuer, loading } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate("/auth");
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      toast.error("Failed to log out");
+    }
+  };
 
   const menuItems = [
     { path: "/", label: "Home", icon: Home },
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { path: "/issue", label: "Issue Certificate", icon: FilePlus },
+    ...(isIssuer ? [{ path: "/issue", label: "Issue Certificate", icon: FilePlus }] : []),
     { path: "/verify", label: "Verify Certificate", icon: ShieldCheck },
   ];
 
-  useEffect(() => {
-    const checkWallet = async () => {
-      if (typeof window.ethereum !== "undefined") {
-        try {
-          const accounts = await window.ethereum.request({ method: "eth_accounts" });
-          setIsAuthenticated(accounts.length > 0);
-        } catch (error) {
-          console.error("Error checking wallet:", error);
-        }
-      }
-    };
-    checkWallet();
-  }, []);
+  // Don't show sidebar on auth page
+  if (location.pathname === "/auth") {
+    return <>{children}</>;
+  }
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  // Redirect to auth if not logged in
+  if (!user && location.pathname !== "/") {
+    navigate("/auth");
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
@@ -88,6 +104,18 @@ const Layout = ({ children }: LayoutProps) => {
               })}
             </ul>
           </nav>
+
+          {user && (
+            <div className="p-4 border-t">
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-2 text-red-600 hover:text-red-700 transition-colors w-full px-4 py-2 rounded-lg hover:bg-red-50"
+              >
+                <LogOut size={20} />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
