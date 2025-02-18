@@ -72,6 +72,20 @@ const Auth = () => {
     }
   };
 
+  const handleConnect = async () => {
+    try {
+      if (typeof window.ethereum !== "undefined") {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        navigate("/dashboard");
+      } else {
+        toast.error("Please install MetaMask");
+        throw new Error("Please install MetaMask");
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <motion.div
@@ -217,7 +231,7 @@ const Auth = () => {
 
                 <button
                   type="button"
-                  onClick={() => toast.info("Web3 login coming soon")}
+                  onClick={handleConnect}
                   className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <Key className="w-4 h-4 mr-2" />
