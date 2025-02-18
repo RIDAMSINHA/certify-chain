@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import Header from "./Header";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -61,6 +62,8 @@ const Layout = ({ children }: LayoutProps) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+      <Header />
+      
       {/* Mobile menu button */}
       <button
         className="fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg md:hidden"
