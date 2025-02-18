@@ -29,6 +29,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       if (isSignUp) {
+        // First sign up the user
         const { error: signUpError, data } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -53,9 +54,15 @@ const Auth = () => {
                 is_issuer: formData.isIssuer,
                 wallet_address: '' // Initially empty
               }
-            ]);
+            ])
+            .select()
+            .single();
 
-          if (profileError) throw profileError;
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+            toast.error("Failed to create profile");
+            return;
+          }
         }
 
         toast.success("Check your email to confirm your account");
@@ -81,8 +88,10 @@ const Auth = () => {
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/`,
-          data: {
-            is_issuer: false // Default to regular user for OAuth signins
+          // Remove the data property as it's not supported in the options type
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
           }
         }
       });
