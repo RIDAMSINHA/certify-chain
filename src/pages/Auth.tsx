@@ -138,7 +138,7 @@ const Auth = () => {
             params: [message, accounts[0]],
           });
 
-          // Create or update profile with wallet address
+          // Check if wallet address already exists in profiles
           const { data: existingProfile } = await supabase
             .from('profiles')
             .select('*')
@@ -146,24 +146,24 @@ const Auth = () => {
             .maybeSingle();
 
           if (!existingProfile) {
-            const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+            // Generate a random password for the new account
+            const randomPassword = crypto.randomUUID();
+            
+            // Create new auth user with placeholder email
+            const { data: { user: newUser }, error: signUpError } = await supabase.auth.signUp({
               email: `${accounts[0].toLowerCase()}@placeholder.com`,
-              password: crypto.randomUUID(), // Generate a random password
-              options: {
-                data: {
-                  wallet_address: accounts[0],
-                }
-              }
+              password: randomPassword
             });
 
             if (signUpError) throw signUpError;
 
-            if (user) {
+            if (newUser) {
+              // Create profile for the new user
               const { error: profileError } = await supabase
                 .from('profiles')
                 .insert([
                   {
-                    id: user.id,
+                    id: newUser.id,
                     wallet_address: accounts[0],
                     name: `Wallet (${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)})`,
                   }
@@ -172,10 +172,11 @@ const Auth = () => {
               if (profileError) throw profileError;
             }
           } else {
-            // Sign in with existing wallet profile
+            // If profile exists, sign in with placeholder email
             const { error: signInError } = await supabase.auth.signInWithPassword({
               email: `${accounts[0].toLowerCase()}@placeholder.com`,
-              password: existingProfile.password || crypto.randomUUID(),
+              // Use a new random password in case the old one is not available
+              password: crypto.randomUUID()
             });
 
             if (signInError) throw signInError;
