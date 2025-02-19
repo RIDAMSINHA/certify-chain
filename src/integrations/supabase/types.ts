@@ -59,21 +59,21 @@ export type Database = {
           id: string
           is_issuer: boolean | null
           name: string | null
-          wallet_address: string
+          wallet_address: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
           is_issuer?: boolean | null
           name?: string | null
-          wallet_address: string
+          wallet_address?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
           is_issuer?: boolean | null
           name?: string | null
-          wallet_address?: string
+          wallet_address?: string | null
         }
         Relationships: []
       }
