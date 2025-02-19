@@ -12,18 +12,22 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isIssuer: false,
-  loading: true,
+  loading: false, // Changed default to false
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start with false since we might have a token
 
-  // Refactored initialization using an async function
   useEffect(() => {
     const initializeAuth = async () => {
-      console.log("Checking session...");
+      // Check local storage for token first
+      const token = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
+      if (!token) {
+        setLoading(true); // Only set loading if we don't have a token
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       console.log("Session from getSession:", session);
       
@@ -38,7 +42,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     initializeAuth();
 
-    // Listen to auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log("Auth state changed:", _event, session);
       setUser(session?.user ?? null);
@@ -101,7 +104,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    console.log("Rendering AuthProvider with user:", user, "and isIssuer:", isIssuer, "and loading:", loading),
     <AuthContext.Provider value={{ user, isIssuer, loading }}>
       {children}
     </AuthContext.Provider>

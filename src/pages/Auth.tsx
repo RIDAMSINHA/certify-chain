@@ -4,10 +4,12 @@ import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Mail, Key, User, ArrowLeft } from "lucide-react";
+import { useAuth } from "@/providers/AuthProvider";
 
 const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [formData, setFormData] = useState({
@@ -17,6 +19,13 @@ const Auth = () => {
     isIssuer: false,
     name: "",
   });
+
+  useEffect(() => {
+    if (user) {
+      toast.info("You are already signed in");
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +37,6 @@ const Auth = () => {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        // Sign up the user and include extra user metadata.
         const { error: signUpError, data } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -42,18 +50,14 @@ const Auth = () => {
         
         if (signUpError) throw signUpError;
 
-        // Do NOT insert profile yet because the user must first confirm their email.
         toast.success("Check your email to confirm your account");
       } else {
-        // Sign in the user
         const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
         if (signInError) throw signInError;
 
-        // After sign in, the session is active. Now check if the profile exists.
-        // Fetch the active session
         const {
           data: { session },
           error: sessionError,
@@ -64,7 +68,6 @@ const Auth = () => {
 
         const userId = session.user.id;
 
-        // Check if the profile exists
         const { data: profile, error: profileSelectError } = await supabase
           .from("profiles")
           .select("*")
@@ -78,15 +81,14 @@ const Auth = () => {
         }
 
         if (!profile) {
-          // Create the profile if it doesn't exist.
           const { error: profileUpsertError } = await supabase
             .from("profiles")
             .upsert([
               {
                 id: userId,
-                name: formData.name || session.user.email, // Use email as fallback
+                name: formData.name || session.user.email,
                 is_issuer: formData.isIssuer,
-                wallet_address: null, // Initially empty
+                wallet_address: null,
               },
             ]);
           if (profileUpsertError) {
@@ -138,6 +140,10 @@ const Auth = () => {
       console.error("Error connecting wallet:", error);
     }
   };
+
+  if (user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
