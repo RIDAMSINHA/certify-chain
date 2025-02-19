@@ -108,7 +108,7 @@ const Layout = ({ children }: LayoutProps) => {
             </ul>
           </nav>
 
-          {user && (
+          {/* {user && (
             <div className="p-4 border-t">
               <button
                 onClick={handleLogout}
@@ -118,7 +118,7 @@ const Layout = ({ children }: LayoutProps) => {
                 <span>Logout</span>
               </button>
             </div>
-          )}
+          )} */}
         </div>
       </div>
 
