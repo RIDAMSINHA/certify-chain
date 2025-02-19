@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -137,20 +138,51 @@ const Auth = () => {
             params: [message, accounts[0]],
           });
 
-          // Sign in with Supabase custom JWT
-          const { data, error } = await supabase.auth.signInWithOtp({
-            email: `${accounts[0]}@metamask.user`,
-            options: {
-              data: {
-                wallet_address: accounts[0],
-                signature: signature
-              }
-            }
-          });
+          // Create or update profile with wallet address
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('wallet_address', accounts[0])
+            .maybeSingle();
 
-          if (error) throw error;
-          
-          navigate("/register");
+          if (!existingProfile) {
+            const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+              email: `${accounts[0].toLowerCase()}@placeholder.com`,
+              password: crypto.randomUUID(), // Generate a random password
+              options: {
+                data: {
+                  wallet_address: accounts[0],
+                }
+              }
+            });
+
+            if (signUpError) throw signUpError;
+
+            if (user) {
+              const { error: profileError } = await supabase
+                .from('profiles')
+                .insert([
+                  {
+                    id: user.id,
+                    wallet_address: accounts[0],
+                    name: `Wallet (${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)})`,
+                  }
+                ]);
+
+              if (profileError) throw profileError;
+            }
+          } else {
+            // Sign in with existing wallet profile
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+              email: `${accounts[0].toLowerCase()}@placeholder.com`,
+              password: existingProfile.password || crypto.randomUUID(),
+            });
+
+            if (signInError) throw signInError;
+          }
+
+          toast.success("Signed in with MetaMask successfully");
+          navigate("/");
         }
       } else {
         toast.error("Please install MetaMask");
@@ -158,20 +190,6 @@ const Auth = () => {
     } catch (error) {
       console.error("Error signing in with MetaMask:", error);
       toast.error("Failed to sign in with MetaMask");
-    }
-  };
-
-  const handleConnect = async () => {
-    try {
-      if (typeof window.ethereum !== "undefined") {
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-        navigate("/dashboard");
-      } else {
-        toast.error("Please install MetaMask");
-        throw new Error("Please install MetaMask");
-      }
-    } catch (error) {
-      console.error("Error connecting wallet:", error);
     }
   };
 
