@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface AuthContextType {
   user: User | null;
@@ -13,7 +14,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isIssuer: false,
-  loading: false,
+  loading: true,
   logout: async () => {},
 });
 
@@ -21,52 +22,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
-
-  const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setIsIssuer(false);
-      localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
-    } catch (error) {
-      console.error("Error during logout:", error);
-    }
-  };
-
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          setUser(session.user);
-          await checkIssuerStatus(session.user.id);
-        }
-      } catch (error) {
-        console.error("Error initializing auth:", error);
-      } finally {
-        setLoading(false);
-        setInitialized(true);
-      }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
-        await checkIssuerStatus(session.user.id);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setIsIssuer(false);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const checkIssuerStatus = async (userId: string) => {
     try {
@@ -85,8 +42,79 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  if (!initialized) {
-    return <div>Loading...</div>;
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          throw error;
+        }
+
+        if (session?.user) {
+          setUser(session.user);
+          await checkIssuerStatus(session.user.id);
+        } else if (location.pathname !== '/auth') {
+          navigate('/auth');
+        }
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+        if (location.pathname !== '/auth') {
+          navigate('/auth');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setLoading(true);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
+        await checkIssuerStatus(session.user.id);
+        navigate('/');
+      } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        setUser(null);
+        setIsIssuer(false);
+        navigate('/auth');
+      }
+      
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate, location.pathname]);
+
+  useEffect(() => {
+    // Protect routes
+    if (!loading && !user && location.pathname !== '/auth') {
+      navigate('/auth');
+    }
+  }, [loading, user, location.pathname, navigate]);
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setIsIssuer(false);
+      localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
+      navigate('/auth');
+    } catch (error) {
+      console.error("Error during logout:", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   return (

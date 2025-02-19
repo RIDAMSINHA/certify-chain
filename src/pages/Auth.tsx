@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -145,19 +144,22 @@ const Auth = () => {
             .eq('wallet_address', accounts[0])
             .maybeSingle();
 
-          if (!existingProfile) {
-            // Generate a random password for the new account
-            const randomPassword = crypto.randomUUID();
-            
-            // Create new auth user with placeholder email
+          // Create a custom token for authentication
+          const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
+            email: `wallet_${accounts[0].toLowerCase()}@internal`,
+            password: signature, // Use the signature as the password
+          });
+
+          if (authError) {
+            // If user doesn't exist, create a new one
             const { data: { user: newUser }, error: signUpError } = await supabase.auth.signUp({
-              email: `${accounts[0].toLowerCase()}@placeholder.com`,
-              password: randomPassword
+              email: `wallet_${accounts[0].toLowerCase()}@internal`,
+              password: signature,
             });
 
             if (signUpError) throw signUpError;
 
-            if (newUser) {
+            if (newUser && !existingProfile) {
               // Create profile for the new user
               const { error: profileError } = await supabase
                 .from('profiles')
@@ -171,15 +173,6 @@ const Auth = () => {
 
               if (profileError) throw profileError;
             }
-          } else {
-            // If profile exists, sign in with placeholder email
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-              email: `${accounts[0].toLowerCase()}@placeholder.com`,
-              // Use a new random password in case the old one is not available
-              password: crypto.randomUUID()
-            });
-
-            if (signInError) throw signInError;
           }
 
           toast.success("Signed in with MetaMask successfully");
