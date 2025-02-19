@@ -1,4 +1,3 @@
-
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -14,7 +13,7 @@ import { toast } from "sonner";
 
 const Header = () => {
   const navigate = useNavigate();
-  const { user, isIssuer } = useAuth();
+  const { user } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -27,6 +26,7 @@ const Header = () => {
     }
   };
 
+  // If no user is available, don't render the header
   if (!user) return null;
 
   return (
@@ -36,7 +36,7 @@ const Header = () => {
           <div className="flex items-center space-x-2 bg-white rounded-full px-4 py-2 shadow-md hover:shadow-lg transition-shadow">
             <UserCircle className="h-6 w-6 text-gray-600" />
             <span className="text-sm font-medium text-gray-700">
-              {user.email}
+              {user.user_metadata?.name || user.email}
             </span>
           </div>
         </DropdownMenuTrigger>
@@ -56,7 +56,10 @@ const Header = () => {
             <span>Settings</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="cursor-pointer text-red-600"
+          >
             <LogOut className="mr-2 h-4 w-4" />
             <span>Logout</span>
           </DropdownMenuItem>

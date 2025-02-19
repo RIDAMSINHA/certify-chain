@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -15,10 +14,11 @@ interface UserProfileData {
 
 const UserProfile = () => {
   const { id } = useParams();
-  const { isIssuer } = useAuth();
+  const { user, isIssuer } = useAuth();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -54,12 +54,15 @@ const UserProfile = () => {
     }
   }, [id]);
 
-  if (!isIssuer) {
-    return <div>Access denied</div>;
-  }
+  // Determine access rights: allow if the current user is HR or owns the profile.
+  const allowed = user && (isIssuer || user.id === id);
 
   if (loading) {
     return <div>Loading...</div>;
+  }
+
+  if (!allowed) {
+    return <div>Access denied</div>;
   }
 
   if (!profile) {

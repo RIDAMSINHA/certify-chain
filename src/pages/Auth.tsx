@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +28,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        // First sign up the user
+        // Sign up the user and include extra user metadata.
         const { error: signUpError, data } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -43,35 +42,60 @@ const Auth = () => {
         
         if (signUpError) throw signUpError;
 
-        // Create profile after successful signup
-        if (data.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: data.user.id,
-                name: formData.name,
-                is_issuer: formData.isIssuer,
-                wallet_address: '' // Initially empty
-              }
-            ])
-            .select()
-            .single();
-
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-            toast.error("Failed to create profile");
-            return;
-          }
-        }
-
+        // Do NOT insert profile yet because the user must first confirm their email.
         toast.success("Check your email to confirm your account");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        // Sign in the user
+        const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
-        if (error) throw error;
+        if (signInError) throw signInError;
+
+        // After sign in, the session is active. Now check if the profile exists.
+        // Fetch the active session
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError || !session) {
+          throw new Error("No active session found");
+        }
+
+        const userId = session.user.id;
+
+        // Check if the profile exists
+        const { data: profile, error: profileSelectError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (profileSelectError) {
+          console.error("Error checking profile:", profileSelectError);
+          toast.error("Error checking profile");
+          return;
+        }
+
+        if (!profile) {
+          // Create the profile if it doesn't exist.
+          const { error: profileUpsertError } = await supabase
+            .from("profiles")
+            .upsert([
+              {
+                id: userId,
+                name: formData.name || session.user.email, // Use email as fallback
+                is_issuer: formData.isIssuer,
+                wallet_address: null, // Initially empty
+              },
+            ]);
+          if (profileUpsertError) {
+            console.error("Profile creation error:", profileUpsertError);
+            toast.error("Failed to create or update profile");
+            return;
+          }
+        }
+        toast.success("Signed in successfully");
         navigate("/");
       }
     } catch (error) {
@@ -88,12 +112,11 @@ const Auth = () => {
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/`,
-          // Remove the data property as it's not supported in the options type
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
-          }
-        }
+          },
+        },
       });
       if (error) throw error;
     } catch (error) {

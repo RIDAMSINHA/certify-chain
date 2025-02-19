@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -20,18 +19,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isIssuer, setIsIssuer] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Refactored initialization using an async function
   useEffect(() => {
-    // Check active sessions and set the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      console.log("Checking session...");
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log("Session from getSession:", session);
+      
       setUser(session?.user ?? null);
+      
       if (session?.user) {
-        checkIssuerStatus(session.user.id);
+        await checkIssuerStatus(session.user.id);
       } else {
         setLoading(false);
       }
-    });
+    };
 
+    initializeAuth();
+
+    // Listen to auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log("Auth state changed:", _event, session);
       setUser(session?.user ?? null);
       if (session?.user) {
         await checkIssuerStatus(session.user.id);
@@ -45,35 +53,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const checkIssuerStatus = async (userId: string) => {
     try {
-      // First check if profile exists
+      console.log("Checking issuer status for user:", userId);
+      // Check if profile exists
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('is_issuer')
         .eq('id', userId)
         .maybeSingle();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        throw profileError;
+      }
 
       // If profile doesn't exist, create it
       if (!profile) {
+        console.log("Profile not found. Inserting new profile...");
         const { data: userData } = await supabase.auth.getUser();
-        const user = userData.user;
+        const currentUser = userData.user;
         
-        if (user) {
+        if (currentUser) {
           const { error: insertError } = await supabase
             .from('profiles')
             .insert([
               {
                 id: userId,
-                is_issuer: user.user_metadata?.is_issuer || false,
-                name: user.user_metadata?.name || user.email,
-                wallet_address: user.user_metadata?.wallet_address || ''
+                is_issuer: currentUser.user_metadata?.is_issuer || false,
+                name: currentUser.user_metadata?.name || currentUser.email,
+                wallet_address: currentUser.user_metadata?.wallet_address || ''
               }
             ]);
 
-          if (insertError) throw insertError;
+          if (insertError) {
+            throw insertError;
+          }
 
-          setIsIssuer(user.user_metadata?.is_issuer || false);
+          setIsIssuer(currentUser.user_metadata?.is_issuer || false);
         }
       } else {
         setIsIssuer(profile.is_issuer || false);
@@ -86,6 +100,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
+    console.log("Rendering AuthProvider with user:", user, "and isIssuer:", isIssuer, "and loading:", loading),
     <AuthContext.Provider value={{ user, isIssuer, loading }}>
       {children}
     </AuthContext.Provider>
