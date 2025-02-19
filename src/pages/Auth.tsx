@@ -110,20 +110,54 @@ const Auth = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
+          redirectTo: `${window.location.origin}/register`
+        }
       });
       if (error) throw error;
     } catch (error) {
       console.error("Error signing in with Google:", error);
       toast.error("Failed to sign in with Google");
+    }
+  };
+
+  const handleMetaMaskSignIn = async () => {
+    try {
+      if (typeof window.ethereum !== "undefined") {
+        const accounts = await window.ethereum.request({
+          method: "eth_requestAccounts",
+        });
+        
+        if (accounts[0]) {
+          const message = "Sign this message to verify your identity";
+          const signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [message, accounts[0]],
+          });
+
+          // Sign in with Supabase custom JWT
+          const { data, error } = await supabase.auth.signInWithOtp({
+            email: `${accounts[0]}@metamask.user`,
+            options: {
+              data: {
+                wallet_address: accounts[0],
+                signature: signature
+              }
+            }
+          });
+
+          if (error) throw error;
+          
+          navigate("/register");
+        }
+      } else {
+        toast.error("Please install MetaMask");
+      }
+    } catch (error) {
+      console.error("Error signing in with MetaMask:", error);
+      toast.error("Failed to sign in with MetaMask");
     }
   };
 
@@ -290,7 +324,7 @@ const Auth = () => {
 
                 <button
                   type="button"
-                  onClick={handleConnect}
+                  onClick={handleMetaMaskSignIn}
                   className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <Key className="w-4 h-4 mr-2" />

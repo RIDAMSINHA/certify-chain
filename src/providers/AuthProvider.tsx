@@ -7,104 +7,90 @@ interface AuthContextType {
   user: User | null;
   isIssuer: boolean;
   loading: boolean;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isIssuer: false,
-  loading: false, // Changed default to false
+  loading: false,
+  logout: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
-  const [loading, setLoading] = useState(false); // Start with false since we might have a token
+  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setIsIssuer(false);
+      localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
+    } catch (error) {
+      console.error("Error during logout:", error);
+    }
+  };
 
   useEffect(() => {
     const initializeAuth = async () => {
-      // Check local storage for token first
-      const token = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
-      if (!token) {
-        setLoading(true); // Only set loading if we don't have a token
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log("Session from getSession:", session);
-      
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await checkIssuerStatus(session.user.id);
-      } else {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          setUser(session.user);
+          await checkIssuerStatus(session.user.id);
+        }
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      } finally {
         setLoading(false);
+        setInitialized(true);
       }
     };
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log("Auth state changed:", _event, session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
         await checkIssuerStatus(session.user.id);
-      } else {
-        setLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setIsIssuer(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkIssuerStatus = async (userId: string) => {
     try {
-      console.log("Checking issuer status for user:", userId);
-      // Check if profile exists
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('is_issuer')
+        .select('is_issuer, name')
         .eq('id', userId)
         .maybeSingle();
 
-      if (profileError) {
-        throw profileError;
-      }
+      if (profileError) throw profileError;
 
-      // If profile doesn't exist, create it
-      if (!profile) {
-        console.log("Profile not found. Inserting new profile...");
-        const { data: userData } = await supabase.auth.getUser();
-        const currentUser = userData.user;
-        
-        if (currentUser) {
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: userId,
-                is_issuer: currentUser.user_metadata?.is_issuer || false,
-                name: currentUser.user_metadata?.name || currentUser.email,
-                wallet_address: currentUser.user_metadata?.wallet_address || ''
-              }
-            ]);
-
-          if (insertError) {
-            throw insertError;
-          }
-
-          setIsIssuer(currentUser.user_metadata?.is_issuer || false);
-        }
-      } else {
-        setIsIssuer(profile.is_issuer || false);
-      }
+      setIsIssuer(profile?.is_issuer || false);
     } catch (error) {
       console.error('Error checking issuer status:', error);
-    } finally {
-      setLoading(false);
+      setIsIssuer(false);
     }
   };
 
+  if (!initialized) {
+    return <div>Loading...</div>;
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isIssuer, loading }}>
+    <AuthContext.Provider value={{ user, isIssuer, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );
