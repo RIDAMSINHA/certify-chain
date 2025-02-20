@@ -142,74 +142,55 @@ const Auth = () => {
           const password = await generateDeterministicPassword(walletAddress);
           const email = `wallet_${walletAddress.toLowerCase()}@internal`;
 
-          // Attempt to sign up first
-          const { data: signUpData, error: signUpError } =
-            await supabase.auth.signUp({
-              email,
-              password,
-            });
-
-          let userObj = signUpData?.user;
-          if (signUpError) {
-            // If error indicates user already exists, then try to sign in
-            if (signUpError.message.toLowerCase().includes("already")) {
-              const { data: signInData, error: signInError } =
-                await supabase.auth.signInWithPassword({
-                  email,
-                  password,
-                });
-              if (signInError) throw signInError;
-              userObj = signInData?.user;
-            } else {
-              throw signUpError;
-            }
-          }
-
-          // If userObj is still null, try signing in explicitly.
-          if (!userObj) {
-            const { data: signInData, error: signInError } =
-              await supabase.auth.signInWithPassword({
-                email,
-                password,
-              });
-            if (signInError) throw signInError;
-            userObj = signInData?.user;
-          }
-
-          if (!userObj) {
-            throw new Error("Authentication failed.");
-          }
-
-          // Check if a profile exists for this wallet; if not, create one.
-          const { data: existingProfile } = await supabase
+          // First, check if the user already exists
+          const { data: existingUser, error: userError } = await supabase
             .from("profiles")
             .select("*")
             .eq("wallet_address", walletAddress)
             .maybeSingle();
-          if (!existingProfile) {
-            const { error: profileError } = await supabase
-              .from("profiles")
-              .insert([
-                {
-                  id: userObj.id,
-                  wallet_address: walletAddress,
-                  name: `Wallet (${walletAddress.slice(
-                    0,
-                    6
-                  )}...${walletAddress.slice(-4)})`,
-                },
-              ]);
-            if (profileError) throw profileError;
+
+          if (userError) {
+            throw userError;
           }
+
+          // If user doesn't exist, create a new one
+          if (!existingUser) {
+            // Sign up user in auth
+            const { data: signUpData, error: signUpError } =
+              await supabase.auth.signUp({
+                email,
+                password,
+              });
+
+            if (signUpError) throw signUpError;
+
+            if (signUpData.user) {
+              // Create initial profile
+              const { error: profileError } = await supabase
+                .from("profiles")
+                .insert([
+                  {
+                    id: signUpData.user.id,
+                    wallet_address: walletAddress,
+                    name: null, // Will be set in register page
+                    is_issuer: null, // Will be set in register page
+                  },
+                ]);
+
+              if (profileError) throw profileError;
+            }
+          }
+
+          // Now sign in the user
+          const { data: signInData, error: signInError } =
+            await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+
+          if (signInError) throw signInError;
+
           toast.success("Signed in with MetaMask successfully");
-          // After successful Metamask sign-in/up:
-          const tempUser = {
-            id: userObj.id,
-            email: userObj.email,
-            // You can add other fields you might need
-            user_metadata: userObj.user_metadata,
-          };
-          localStorage.setItem("metamask_user", JSON.stringify(tempUser));
           navigate("/register");
         }
       } else {
