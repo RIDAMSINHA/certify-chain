@@ -54,7 +54,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (session?.user) {
           setUser(session.user);
           await checkIssuerStatus(session.user.id);
-        } else if (location.pathname !== '/auth') {
+          
+          // Don't redirect if we're on the register page
+          if (location.pathname === '/auth' && session.user) {
+            navigate('/');
+          }
+        } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
           navigate('/auth');
         }
       } catch (error) {
@@ -70,12 +75,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session) => {
+      console.log("Auth state changed:", event, session);
       setLoading(true);
       
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         await checkIssuerStatus(session.user.id);
-        navigate('/');
+        
+        // Check if the user has completed registration
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, is_issuer')
+          .eq('id', session.user.id)
+          .single();
+          
+        if (!profile?.name || profile.is_issuer === null) {
+          navigate('/register');
+        } else {
+          navigate('/');
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
@@ -90,37 +108,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [navigate, location.pathname]);
 
-  useEffect(() => {
-    // Protect routes
-    if (!loading && !user && location.pathname !== '/auth') {
-      navigate('/auth');
-    }
-  }, [loading, user, location.pathname, navigate]);
-
   const logout = async () => {
     try {
       await supabase.auth.signOut();
       setUser(null);
       setIsIssuer(false);
-      localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
       navigate('/auth');
     } catch (error) {
       console.error("Error during logout:", error);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
   return (
-    console.log("AuthContext.Provider:", { user, isIssuer, loading }),
     <AuthContext.Provider value={{ user, isIssuer, loading, logout }}>
-      {children}
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };
