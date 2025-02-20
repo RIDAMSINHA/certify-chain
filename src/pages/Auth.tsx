@@ -138,24 +138,19 @@ const Auth = () => {
             method: "personal_sign",
             params: [message, walletAddress],
           });
-          // Generate a deterministic password from the wallet address.
+          
           const password = await generateDeterministicPassword(walletAddress);
           const email = `wallet_${walletAddress.toLowerCase()}@internal`;
 
-          // First, check if the user already exists
-          const { data: existingUser, error: userError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("wallet_address", walletAddress)
-            .maybeSingle();
+          // First try to sign in if user exists
+          const { data: signInData, error: signInError } = 
+            await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
 
-          if (userError) {
-            throw userError;
-          }
-
-          // If user doesn't exist, create a new one
-          if (!existingUser) {
-            // Sign up user in auth
+          if (signInError) {
+            // If sign in failed, create new user
             const { data: signUpData, error: signUpError } =
               await supabase.auth.signUp({
                 email,
@@ -165,30 +160,29 @@ const Auth = () => {
             if (signUpError) throw signUpError;
 
             if (signUpData.user) {
-              // Create initial profile
+              // Create initial profile right after signup
               const { error: profileError } = await supabase
                 .from("profiles")
                 .insert([
                   {
                     id: signUpData.user.id,
                     wallet_address: walletAddress,
-                    name: null, // Will be set in register page
-                    is_issuer: null, // Will be set in register page
-                  },
-                ]);
+                  }
+                ])
+                .select()
+                .single();
 
               if (profileError) throw profileError;
+
+              // Sign in the newly created user
+              const { error: newSignInError } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+              });
+
+              if (newSignInError) throw newSignInError;
             }
           }
-
-          // Now sign in the user
-          const { data: signInData, error: signInError } =
-            await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-
-          if (signInError) throw signInError;
 
           toast.success("Signed in with MetaMask successfully");
           navigate("/register");

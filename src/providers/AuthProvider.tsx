@@ -42,23 +42,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const handleAuthStateChange = async (session: User | null) => {
-    try {
-      if (session) {
-        const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(session.id);
-        setUser(session);
-        setIsIssuer(newIsIssuer);
+    if (!session) {
+      setUser(null);
+      setIsIssuer(false);
+      if (location.pathname !== '/auth') {
+        navigate('/auth');
+      }
+      return;
+    }
 
-        if (!name || newIsIssuer === null) {
-          navigate('/register');
-        } else if (location.pathname === '/auth') {
-          navigate('/');
-        }
-      } else {
-        setUser(null);
-        setIsIssuer(false);
-        if (location.pathname !== '/auth') {
-          navigate('/auth');
-        }
+    try {
+      const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(session.id);
+      setUser(session);
+      setIsIssuer(newIsIssuer);
+
+      // If we're on the register page, don't redirect
+      if (location.pathname === '/register') {
+        return;
+      }
+
+      // If profile is incomplete, redirect to register
+      if (!name || newIsIssuer === null) {
+        navigate('/register');
+      } else if (location.pathname === '/auth') {
+        navigate('/');
       }
     } catch (error) {
       console.error('Error handling auth state:', error);
@@ -71,14 +78,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (mounted && session?.user) {
-          await handleAuthStateChange(session.user);
-        } else if (mounted && location.pathname !== '/auth') {
-          navigate('/auth');
+        if (mounted) {
+          if (session?.user) {
+            await handleAuthStateChange(session.user);
+          } else if (location.pathname !== '/auth') {
+            navigate('/auth');
+          }
+          setLoading(false);
         }
       } catch (error) {
         console.error("Error initializing auth:", error);
-      } finally {
         if (mounted) setLoading(false);
       }
     };
@@ -88,9 +97,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session);
       if (mounted) {
-        setLoading(true);
-        await handleAuthStateChange(session?.user || null);
-        setLoading(false);
+        if (event === 'INITIAL_SESSION') {
+          // Don't set loading to true for initial session
+          await handleAuthStateChange(session?.user || null);
+        } else {
+          setLoading(true);
+          await handleAuthStateChange(session?.user || null);
+          setLoading(false);
+        }
       }
     });
 
