@@ -34,88 +34,83 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .maybeSingle();
 
       if (profileError) throw profileError;
-
-      setIsIssuer(profile?.is_issuer || false);
+      return { isIssuer: profile?.is_issuer || false, name: profile?.name };
     } catch (error) {
       console.error('Error checking issuer status:', error);
-      setIsIssuer(false);
+      return { isIssuer: false, name: null };
+    }
+  };
+
+  const handleAuthStateChange = async (session: User | null) => {
+    try {
+      if (session) {
+        const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(session.id);
+        setUser(session);
+        setIsIssuer(newIsIssuer);
+
+        if (!name || newIsIssuer === null) {
+          navigate('/register');
+        } else if (location.pathname === '/auth') {
+          navigate('/');
+        }
+      } else {
+        setUser(null);
+        setIsIssuer(false);
+        if (location.pathname !== '/auth') {
+          navigate('/auth');
+        }
+      }
+    } catch (error) {
+      console.error('Error handling auth state:', error);
     }
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          throw error;
-        }
-
-        if (session?.user) {
-          setUser(session.user);
-          await checkIssuerStatus(session.user.id);
-          
-          // Don't redirect if we're on the register page
-          if (location.pathname === '/auth' && session.user) {
-            navigate('/');
-          }
-        } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted && session?.user) {
+          await handleAuthStateChange(session.user);
+        } else if (mounted && location.pathname !== '/auth') {
           navigate('/auth');
         }
       } catch (error) {
         console.error("Error initializing auth:", error);
-        if (location.pathname !== '/auth') {
-          navigate('/auth');
-        }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session);
-      setLoading(true);
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
-        await checkIssuerStatus(session.user.id);
-        
-        // Check if the user has completed registration
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('name, is_issuer')
-          .eq('id', session.user.id)
-          .single();
-          
-        if (!profile?.name || profile.is_issuer === null) {
-          navigate('/register');
-        } else {
-          navigate('/');
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setIsIssuer(false);
-        navigate('/auth');
+      if (mounted) {
+        setLoading(true);
+        await handleAuthStateChange(session?.user || null);
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, [navigate, location.pathname]);
+  }, []);
 
   const logout = async () => {
     try {
+      setLoading(true);
       await supabase.auth.signOut();
       setUser(null);
       setIsIssuer(false);
       navigate('/auth');
     } catch (error) {
       console.error("Error during logout:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
