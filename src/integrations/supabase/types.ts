@@ -16,6 +16,8 @@ export type Database = {
           id: string
           issuer_id: string
           metadata_uri: string | null
+          priority: number | null
+          public_url: string | null
           recipient_address: string
           status: string | null
           title: string
@@ -27,6 +29,8 @@ export type Database = {
           id?: string
           issuer_id: string
           metadata_uri?: string | null
+          priority?: number | null
+          public_url?: string | null
           recipient_address: string
           status?: string | null
           title: string
@@ -38,6 +42,8 @@ export type Database = {
           id?: string
           issuer_id?: string
           metadata_uri?: string | null
+          priority?: number | null
+          public_url?: string | null
           recipient_address?: string
           status?: string | null
           title?: string

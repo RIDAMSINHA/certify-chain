@@ -1,7 +1,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import type { User, AuthChangeEvent } from "@supabase/supabase-js";
 import { useNavigate, useLocation } from "react-router-dom";
 
 interface AuthContextType {
@@ -69,14 +69,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session) => {
       setLoading(true);
       
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         await checkIssuerStatus(session.user.id);
         navigate('/');
-      } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
         navigate('/auth');
