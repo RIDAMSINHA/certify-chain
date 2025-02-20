@@ -47,15 +47,16 @@ const Auth = () => {
             },
           },
         });
-        
+
         if (signUpError) throw signUpError;
 
         toast.success("Check your email to confirm your account");
       } else {
-        const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
+        const { error: signInError, data: signInData } =
+          await supabase.auth.signInWithPassword({
+            email: formData.email,
+            password: formData.password,
+          });
         if (signInError) throw signInError;
 
         const {
@@ -113,8 +114,8 @@ const Auth = () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/register`
-        }
+          redirectTo: `${window.location.origin}/register`,
+        },
       });
       if (error) throw error;
     } catch (error) {
@@ -126,57 +127,90 @@ const Auth = () => {
   const handleMetaMaskSignIn = async () => {
     try {
       if (typeof window.ethereum !== "undefined") {
-        const accounts = await window.ethereum.request({
+        const accounts: string[] = await window.ethereum.request({
           method: "eth_requestAccounts",
         });
-        
         if (accounts[0]) {
+          const walletAddress = accounts[0];
           const message = "Sign this message to verify your identity";
-          const signature = await window.ethereum.request({
-            method: 'personal_sign',
-            params: [message, accounts[0]],
+          // Request a signature (proof of wallet ownership)
+          await window.ethereum.request({
+            method: "personal_sign",
+            params: [message, walletAddress],
           });
+          // Generate a deterministic password from the wallet address.
+          const password = await generateDeterministicPassword(walletAddress);
+          const email = `wallet_${walletAddress.toLowerCase()}@internal`;
 
-          // Check if wallet address already exists in profiles
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('wallet_address', accounts[0])
-            .maybeSingle();
-
-          // Create a custom token for authentication
-          const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
-            email: `wallet_${accounts[0].toLowerCase()}@internal`,
-            password: signature, // Use the signature as the password
-          });
-
-          if (authError) {
-            // If user doesn't exist, create a new one
-            const { data: { user: newUser }, error: signUpError } = await supabase.auth.signUp({
-              email: `wallet_${accounts[0].toLowerCase()}@internal`,
-              password: signature,
+          // Attempt to sign up first
+          const { data: signUpData, error: signUpError } =
+            await supabase.auth.signUp({
+              email,
+              password,
             });
 
-            if (signUpError) throw signUpError;
-
-            if (newUser && !existingProfile) {
-              // Create profile for the new user
-              const { error: profileError } = await supabase
-                .from('profiles')
-                .insert([
-                  {
-                    id: newUser.id,
-                    wallet_address: accounts[0],
-                    name: `Wallet (${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)})`,
-                  }
-                ]);
-
-              if (profileError) throw profileError;
+          let userObj = signUpData?.user;
+          if (signUpError) {
+            // If error indicates user already exists, then try to sign in
+            if (signUpError.message.toLowerCase().includes("already")) {
+              const { data: signInData, error: signInError } =
+                await supabase.auth.signInWithPassword({
+                  email,
+                  password,
+                });
+              if (signInError) throw signInError;
+              userObj = signInData?.user;
+            } else {
+              throw signUpError;
             }
           }
 
+          // If userObj is still null, try signing in explicitly.
+          if (!userObj) {
+            const { data: signInData, error: signInError } =
+              await supabase.auth.signInWithPassword({
+                email,
+                password,
+              });
+            if (signInError) throw signInError;
+            userObj = signInData?.user;
+          }
+
+          if (!userObj) {
+            throw new Error("Authentication failed.");
+          }
+
+          // Check if a profile exists for this wallet; if not, create one.
+          const { data: existingProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("wallet_address", walletAddress)
+            .maybeSingle();
+          if (!existingProfile) {
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .insert([
+                {
+                  id: userObj.id,
+                  wallet_address: walletAddress,
+                  name: `Wallet (${walletAddress.slice(
+                    0,
+                    6
+                  )}...${walletAddress.slice(-4)})`,
+                },
+              ]);
+            if (profileError) throw profileError;
+          }
           toast.success("Signed in with MetaMask successfully");
-          navigate("/");
+          // After successful Metamask sign-in/up:
+          const tempUser = {
+            id: userObj.id,
+            email: userObj.email,
+            // You can add other fields you might need
+            user_metadata: userObj.user_metadata,
+          };
+          localStorage.setItem("metamask_user", JSON.stringify(tempUser));
+          navigate("/register");
         }
       } else {
         toast.error("Please install MetaMask");
@@ -187,9 +221,20 @@ const Auth = () => {
     }
   };
 
-  if (user) {
-    return null;
+  // Helper: generate a SHA-256 hash (hex string, 64 characters) from a wallet address.
+  async function generateDeterministicPassword(
+    address: string
+  ): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(address);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
+
+  // if (user) {
+  //   return null;
+  // }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -283,7 +328,10 @@ const Auth = () => {
                     placeholder="Confirm Password"
                     value={formData.confirmPassword}
                     onChange={(e) =>
-                      setFormData({ ...formData, confirmPassword: e.target.value })
+                      setFormData({
+                        ...formData,
+                        confirmPassword: e.target.value,
+                      })
                     }
                   />
                 </div>

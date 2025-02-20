@@ -1,6 +1,6 @@
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { 
   Award, 
@@ -27,6 +27,13 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const { user, isIssuer, loading } = useAuth();
 
+  // Protect routes: if not loading, no user, and the current route is not "/auth" or "/register", redirect to "/auth".
+  useEffect(() => {
+    if (!loading && !user && location.pathname !== "/auth" && location.pathname !== "/register") {
+      navigate("/auth");
+    }
+  }, [loading, user, location.pathname, navigate]);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -45,19 +52,12 @@ const Layout = ({ children }: LayoutProps) => {
     { path: "/verify", label: "Verify Certificate", icon: ShieldCheck },
   ];
 
-  // Don't show sidebar on auth page
-  if (location.pathname === "/auth") {
+  // Don't show sidebar on auth page (and optionally on register page if you want to keep the register page simple)
+  if (location.pathname === "/auth" || location.pathname === "/register") {
     return <>{children}</>;
   }
-
-  if (loading) {
+  if (loading && location.pathname !== "/register") {
     return <div>Loading...</div>;
-  }
-
-  // Redirect to auth if not logged in
-  if (!user && location.pathname !== "/") {
-    navigate("/auth");
-    return null;
   }
 
   return (
