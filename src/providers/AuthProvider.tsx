@@ -45,7 +45,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!session) {
       setUser(null);
       setIsIssuer(false);
-      if (location.pathname !== '/auth') {
+      if (location.pathname !== '/auth' && location.pathname !== '/register') {
         navigate('/auth');
       }
       return;
@@ -56,16 +56,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session);
       setIsIssuer(newIsIssuer);
 
-      // If we're on the register page, don't redirect
-      if (location.pathname === '/register') {
-        return;
-      }
+      // Check if the email indicates a MetaMask user
+      const isMetaMaskUser = session.email?.startsWith('wallet_');
 
-      // If profile is incomplete, redirect to register
-      if (!name || newIsIssuer === null) {
-        navigate('/register');
+      // If profile is incomplete, stay on or redirect to register
+      if (!name) {
+        if (location.pathname !== '/register') {
+          navigate('/register');
+        }
       } else if (location.pathname === '/auth') {
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('Error handling auth state:', error);
@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (mounted) {
           if (session?.user) {
             await handleAuthStateChange(session.user);
-          } else if (location.pathname !== '/auth') {
+          } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
             navigate('/auth');
           }
           setLoading(false);
@@ -98,12 +98,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log("Auth state changed:", event, session);
       if (mounted) {
         if (event === 'INITIAL_SESSION') {
-          // Don't set loading to true for initial session
           await handleAuthStateChange(session?.user || null);
-        } else {
+        } else if (event === 'SIGNED_IN') {
           setLoading(true);
           await handleAuthStateChange(session?.user || null);
           setLoading(false);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setIsIssuer(false);
+          if (location.pathname !== '/auth') {
+            navigate('/auth');
+          }
         }
       }
     });
