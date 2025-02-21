@@ -22,7 +22,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -48,7 +47,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!sessionUser) {
       setUser(null);
       setIsIssuer(false);
-      if (initialized && location.pathname !== '/auth' && location.pathname !== '/register') {
+      if (location.pathname !== '/auth' && location.pathname !== '/register') {
         navigate('/auth');
       }
       return;
@@ -56,92 +55,60 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     try {
       const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
-      
-      // Set user state immediately to prevent flashing
       setUser(sessionUser);
       setIsIssuer(newIsIssuer);
 
-      // Only handle navigation after initialization
-      if (initialized) {
-        if (!name) {
-          if (location.pathname !== '/register') {
-            navigate('/register');
-          }
-        } else if (location.pathname === '/auth') {
-          navigate('/dashboard');
+      if (!name) {
+        if (location.pathname !== '/register') {
+          navigate('/register');
         }
+      } else if (location.pathname === '/auth') {
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('Error handling auth state:', error);
     }
   };
 
-  // Initialize auth state
+  // Single initialization effect that sets up auth state
   useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error("Error getting session:", error);
-          if (mounted) {
-            setLoading(false);
-            setInitialized(true);
-          }
-          return;
-        }
-
-        console.log("Initial session check:", session);
-        
-        if (mounted) {
-          if (session?.user) {
-            await handleAuthStateChange(session.user);
-          }
-          setLoading(false);
-          setInitialized(true);
-        }
-      } catch (error) {
-        console.error("Error during auth initialization:", error);
-        if (mounted) {
-          setLoading(false);
-          setInitialized(true);
-        }
-      }
-    };
-
-    initializeAuth();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Listen for auth state changes
-  useEffect(() => {
+    // Set up the auth state change listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session?.user);
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setLoading(true);
-        if (session?.user) {
-          await handleAuthStateChange(session.user);
-        }
-        setLoading(false);
+        await handleAuthStateChange(session?.user || null);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
-        if (location.pathname !== '/auth') {
-          navigate('/auth');
-        }
+        navigate('/auth');
       }
     });
+
+    // Then immediately check the session
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log("Checking initial session:", session);
+        
+        if (session?.user) {
+          await handleAuthStateChange(session.user);
+        } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
+          navigate('/auth');
+        }
+      } catch (error) {
+        console.error("Error checking session:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkSession();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate, location.pathname, initialized]);
+  }, []);
 
   const logout = async () => {
     try {
@@ -157,7 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  console.log("AuthProvider state:", { user, isIssuer, loading, initialized });
+  console.log("AuthProvider state:", { user, isIssuer, loading });
 
   return (
     <AuthContext.Provider value={{ user, isIssuer, loading, logout }}>
