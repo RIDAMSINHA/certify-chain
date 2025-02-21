@@ -18,8 +18,23 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
+// Helper function to get user from localStorage
+const getStoredUser = (): User | null => {
+  const storedUser = localStorage.getItem('supabase.auth.token');
+  if (storedUser) {
+    try {
+      const { currentSession } = JSON.parse(storedUser);
+      return currentSession?.user || null;
+    } catch (error) {
+      console.error('Error parsing stored user:', error);
+      return null;
+    }
+  }
+  return null;
+};
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [isIssuer, setIsIssuer] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -44,13 +59,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const handleAuthStateChange = async (sessionUser: User | null) => {
     console.log("handleAuthStateChange called with user:", sessionUser);
     
+    // If no session user, try localStorage
     if (!sessionUser) {
-      setUser(null);
-      setIsIssuer(false);
-      if (location.pathname !== '/auth' && location.pathname !== '/register') {
-        navigate('/auth');
+      const storedUser = getStoredUser();
+      if (storedUser) {
+        sessionUser = storedUser;
+      } else {
+        setUser(null);
+        setIsIssuer(false);
+        if (location.pathname !== '/auth' && location.pathname !== '/register') {
+          navigate('/auth');
+        }
+        return;
       }
-      return;
     }
 
     try {
@@ -70,9 +91,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Single initialization effect that sets up auth state
+  // Initialize auth state and set up listeners
   useEffect(() => {
-    // Set up the auth state change listener first
+    // First try to get user from localStorage
+    const storedUser = getStoredUser();
+    if (storedUser) {
+      handleAuthStateChange(storedUser);
+    }
+
+    // Set up the auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth state changed:", event, session?.user);
       
@@ -85,19 +112,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // Then immediately check the session
+    // Then check Supabase session
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         console.log("Checking initial session:", session);
         
         if (session?.user) {
           await handleAuthStateChange(session.user);
-        } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
+        } else if (!storedUser && location.pathname !== '/auth' && location.pathname !== '/register') {
           navigate('/auth');
         }
       } catch (error) {
         console.error("Error checking session:", error);
+        // If session check fails, fall back to stored user
+        if (!storedUser && location.pathname !== '/auth' && location.pathname !== '/register') {
+          navigate('/auth');
+        }
       } finally {
         setLoading(false);
       }
@@ -114,6 +145,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       setLoading(true);
       await supabase.auth.signOut();
+      localStorage.removeItem('supabase.auth.token');
       setUser(null);
       setIsIssuer(false);
       navigate('/auth');
