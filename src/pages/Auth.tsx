@@ -1,26 +1,19 @@
 
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Mail, Key, User, ArrowLeft } from "lucide-react";
+import { Key } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { EmailAuthForm } from "@/components/auth/EmailAuthForm";
+import { MetaMaskAuth } from "@/components/auth/MetaMaskAuth";
 
 const Auth = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [isMetaMaskLogin, setIsMetaMaskLogin] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-    isIssuer: false,
-    name: "",
-  });
 
   useEffect(() => {
     if (user) {
@@ -28,88 +21,6 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignUp && formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      if (isSignUp) {
-        const { error: signUpError, data } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              name: formData.name,
-              is_issuer: formData.isIssuer,
-            },
-          },
-        });
-
-        if (signUpError) throw signUpError;
-
-        toast.success("Check your email to confirm your account");
-      } else {
-        const { error: signInError, data: signInData } =
-          await supabase.auth.signInWithPassword({
-            email: formData.email,
-            password: formData.password,
-          });
-        if (signInError) throw signInError;
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-        if (sessionError || !session) {
-          throw new Error("No active session found");
-        }
-
-        const userId = session.user.id;
-
-        const { data: profile, error: profileSelectError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
-
-        if (profileSelectError) {
-          console.error("Error checking profile:", profileSelectError);
-          toast.error("Error checking profile");
-          return;
-        }
-
-        if (!profile) {
-          const { error: profileUpsertError } = await supabase
-            .from("profiles")
-            .upsert([
-              {
-                id: userId,
-                name: formData.name || session.user.email,
-                is_issuer: formData.isIssuer,
-                wallet_address: null,
-              },
-            ]);
-          if (profileUpsertError) {
-            console.error("Profile creation error:", profileUpsertError);
-            toast.error("Failed to create or update profile");
-            return;
-          }
-        }
-        toast.success("Signed in successfully");
-        navigate("/");
-      }
-    } catch (error) {
-      console.error("Error:", error);
-      toast.error(isSignUp ? "Failed to sign up" : "Failed to sign in");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleGoogleSignIn = async () => {
     try {
@@ -125,88 +36,6 @@ const Auth = () => {
       toast.error("Failed to sign in with Google");
     }
   };
-
-  const handleMetaMaskSignIn = async () => {
-    try {
-      if (typeof window.ethereum !== "undefined") {
-        const accounts: string[] = await window.ethereum.request({
-          method: "eth_requestAccounts",
-        });
-        if (accounts[0]) {
-          const walletAddress = accounts[0];
-          const message = "Sign this message to verify your identity";
-          // Request a signature (proof of wallet ownership)
-          await window.ethereum.request({
-            method: "personal_sign",
-            params: [message, walletAddress],
-          });
-          
-          const password = await generateDeterministicPassword(walletAddress);
-          const email = `wallet_${walletAddress.toLowerCase()}@internal`;
-
-          // First try to sign in if user exists
-          const { data: signInData, error: signInError } = 
-            await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-
-          if (signInError) {
-            // If sign in failed, create new user
-            const { data: signUpData, error: signUpError } =
-              await supabase.auth.signUp({
-                email,
-                password,
-              });
-
-            if (signUpError) throw signUpError;
-
-            if (signUpData.user) {
-              // Create initial profile right after signup
-              const { error: profileError } = await supabase
-                .from("profiles")
-                .insert([
-                  {
-                    id: signUpData.user.id,
-                    wallet_address: walletAddress,
-                    is_issuer: formData.isIssuer // Use the isIssuer value from form
-                  }
-                ])
-                .select()
-                .single();
-
-              if (profileError) throw profileError;
-
-              // Sign in the newly created user
-              const { error: newSignInError } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-              });
-
-              if (newSignInError) throw newSignInError;
-            }
-          }
-
-          toast.success("Signed in with MetaMask successfully");
-          navigate("/register");
-        }
-      } else {
-        toast.error("Please install MetaMask");
-      }
-    } catch (error) {
-      console.error("Error signing in with MetaMask:", error);
-      toast.error("Failed to sign in with MetaMask");
-    }
-  };
-
-  // Helper: generate a SHA-256 hash (hex string, 64 characters) from a wallet address.
-  async function generateDeterministicPassword(address: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(address);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -233,175 +62,50 @@ const Auth = () => {
           </p>
         </div>
 
-        <form onSubmit={handleEmailAuth} className="mt-8 space-y-6">
-          <div className="rounded-md shadow-sm space-y-4">
-            {isSignUp && (
-              <div>
-                <label htmlFor="name" className="sr-only">
-                  Full Name
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Full Name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+        <div className="mt-8 space-y-6">
+          {isMetaMaskLogin ? (
+            <MetaMaskAuth
+              onBack={() => setIsMetaMaskLogin(false)}
+            />
+          ) : (
+            <>
+              <EmailAuthForm
+                isSignUp={isSignUp}
+                onSuccess={() => {
+                  if (!isSignUp) {
+                    navigate("/");
                   }
-                />
-              </div>
-            )}
-            {!isMetaMaskLogin && (
-              <>
-                <div>
-                  <label htmlFor="email-address" className="sr-only">
-                    Email address
-                  </label>
-                  <input
-                    id="email-address"
-                    name="email"
-                    type="email"
-                    required
-                    className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                    placeholder="Email address"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label htmlFor="password" className="sr-only">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    required
-                    className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                    placeholder="Password"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                  />
-                </div>
-                {isSignUp && (
-                  <div>
-                    <label htmlFor="confirm-password" className="sr-only">
-                      Confirm Password
-                    </label>
-                    <input
-                      id="confirm-password"
-                      name="confirm-password"
-                      type="password"
-                      required
-                      className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                      placeholder="Confirm Password"
-                      value={formData.confirmPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          confirmPassword: e.target.value,
-                        })
-                      }
+                }}
+              />
+              
+              {!isSignUp && (
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <img
+                      src="https://www.google.com/favicon.ico"
+                      alt="Google"
+                      className="w-4 h-4 mr-2"
                     />
-                  </div>
-                )}
-              </>
-            )}
-            {(isSignUp || isMetaMaskLogin) && (
-              <div className="flex items-center">
-                <input
-                  id="is-issuer"
-                  name="is-issuer"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  checked={formData.isIssuer}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isIssuer: e.target.checked })
-                  }
-                />
-                <label
-                  htmlFor="is-issuer"
-                  className="ml-2 block text-sm text-gray-900"
-                >
-                  Register as HR/Issuer
-                </label>
-              </div>
-            )}
-          </div>
+                    Sign in with Google
+                  </button>
 
-          <div className="flex flex-col space-y-4">
-            {!isMetaMaskLogin && (
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <Mail className="w-4 h-4 mr-2" />
-                {isSignUp ? "Sign up with Email" : "Sign in with Email"}
-              </button>
-            )}
-
-            {!isSignUp && !isMetaMaskLogin && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleGoogleSignIn}
-                  className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <img
-                    src="https://www.google.com/favicon.ico"
-                    alt="Google"
-                    className="w-4 h-4 mr-2"
-                  />
-                  Sign in with Google
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMetaMaskLogin(true);
-                    setFormData({ ...formData, isIssuer: false });
-                  }}
-                  className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <Key className="w-4 h-4 mr-2" />
-                  Connect Wallet
-                </button>
-              </>
-            )}
-
-            {isMetaMaskLogin && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleMetaMaskSignIn}
-                  className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <Key className="w-4 h-4 mr-2" />
-                  Connect with MetaMask
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMetaMaskLogin(false);
-                    setFormData({ ...formData, isIssuer: false });
-                  }}
-                  className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Sign In
-                </button>
-              </>
-            )}
-          </div>
-        </form>
+                  <button
+                    type="button"
+                    onClick={() => setIsMetaMaskLogin(true)}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <Key className="w-4 h-4 mr-2" />
+                    Connect Wallet
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </motion.div>
     </div>
   );
