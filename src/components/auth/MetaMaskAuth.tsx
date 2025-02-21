@@ -38,47 +38,81 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
           const password = await generateDeterministicPassword(walletAddress);
           const email = `wallet_${walletAddress.toLowerCase()}@internal`;
 
+          // Try to sign in first
           const { data: signInData, error: signInError } = 
             await supabase.auth.signInWithPassword({
               email,
               password,
             });
 
-          if (signInError) {
+          if (signInError?.message?.includes("Email not confirmed")) {
+            // If email is not confirmed, get user and check if they exist
+            const { data: { users }, error: getUserError } = await supabase.auth.admin.listUsers();
+            const existingUser = users?.find(u => u.email === email);
+
+            if (existingUser) {
+              // If user exists but email not confirmed, delete the user and recreate
+              await supabase.auth.admin.deleteUser(existingUser.id);
+            }
+
+            // Create new user
             const { data: signUpData, error: signUpError } =
               await supabase.auth.signUp({
                 email,
                 password,
+                options: {
+                  emailRedirectTo: `${window.location.origin}/auth`,
+                  data: {
+                    is_issuer: isIssuer
+                  }
+                }
               });
 
             if (signUpError) throw signUpError;
 
-            if (signUpData.user) {
-              const { error: profileError } = await supabase
+            if (signUpData?.user) {
+              // Check if profile already exists
+              const { data: existingProfile } = await supabase
                 .from("profiles")
-                .insert([
-                  {
-                    id: signUpData.user.id,
-                    wallet_address: walletAddress,
-                    is_issuer: isIssuer
-                  }
-                ])
-                .select()
-                .single();
+                .select("*")
+                .eq("id", signUpData.user.id)
+                .maybeSingle();
 
-              if (profileError) throw profileError;
+              if (!existingProfile) {
+                // Create profile only if it doesn't exist
+                const { error: profileError } = await supabase
+                  .from("profiles")
+                  .insert([
+                    {
+                      id: signUpData.user.id,
+                      wallet_address: walletAddress,
+                      is_issuer: isIssuer
+                    }
+                  ]);
 
-              const { error: newSignInError } = await supabase.auth.signInWithPassword({
-                email,
-                password,
+                if (profileError) throw profileError;
+              }
+
+              // Auto-confirm email for MetaMask users since we verify them through wallet signature
+              const { data: session } = await supabase.auth.setSession({
+                access_token: signUpData.session?.access_token || "",
+                refresh_token: signUpData.session?.refresh_token || ""
               });
 
-              if (newSignInError) throw newSignInError;
+              if (session) {
+                toast.success("Signed in with MetaMask successfully");
+                navigate("/register");
+                return;
+              }
             }
+          } else if (!signInError) {
+            // Successfully signed in
+            toast.success("Signed in with MetaMask successfully");
+            navigate("/register");
+            return;
           }
 
-          toast.success("Signed in with MetaMask successfully");
-          navigate("/register");
+          throw new Error("Failed to authenticate with MetaMask");
         }
       } else {
         toast.error("Please install MetaMask");
