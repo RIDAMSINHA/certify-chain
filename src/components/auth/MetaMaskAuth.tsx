@@ -4,6 +4,7 @@ import { Key, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { User } from "@supabase/supabase-js";
 
 interface MetaMaskAuthProps {
   onBack: () => void;
@@ -47,8 +48,10 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
 
           if (signInError?.message?.includes("Email not confirmed")) {
             // If email is not confirmed, get user and check if they exist
-            const { data: { users }, error: getUserError } = await supabase.auth.admin.listUsers();
-            const existingUser = users?.find(u => u.email === email);
+            const { data: getUserData, error: getUserError } = await supabase.auth.admin.listUsers();
+            if (getUserError) throw getUserError;
+
+            const existingUser = getUserData?.users?.find((user: User) => user.email === email);
 
             if (existingUser) {
               // If user exists but email not confirmed, delete the user and recreate
