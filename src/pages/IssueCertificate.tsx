@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -62,12 +63,12 @@ const IssueCertificate = () => {
         throw new Error("Invalid Ethereum address");
       }
 
-      const { error } = await supabase //FIX THIS PROVIDE EVERYTHING TO INSERT IT
+      const { error } = await supabase
         .from("certificates")
         .insert([
           {
             ...formData,
-            issuer_id: user?.id, //CHECK THIS LATER
+            issuer_id: user?.id,
             status: "public",
           },
         ]);

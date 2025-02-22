@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
@@ -156,8 +157,6 @@ const Dashboard = () => {
     setShowcaseCertificates(newOrder);
     localStorage.setItem("showcaseCertificates", JSON.stringify(newOrder));
   };
-
-  // Re-sort certificates when sortOrder changes is handled in fetchCertificates's dependency
 
   const viewCertificate = (publicUrl: string) => {
     navigate(`/certificates/${publicUrl}`);
