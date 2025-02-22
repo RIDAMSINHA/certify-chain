@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, AuthChangeEvent } from "@supabase/supabase-js";
 import { useNavigate, useLocation } from "react-router-dom";
+import { toast } from "sonner";
 
 interface AuthContextType {
   user: User | null;
@@ -18,25 +19,21 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
-// Helper function to get user from localStorage
-const getStoredUser = (): User | null => {
-  const storedUser = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
-  // console.log("Stored user:", storedUser); 
-  if (storedUser) {
-    try {
-      const session  = JSON.parse(storedUser);
-      // console.log("Parsed currentSession:", session );
-      return session?.user || null;
-    } catch (error) {
-      console.error('Error parsing stored user:', error);
-      return null;
+// Helper function to get stored session
+const getStoredSession = () => {
+  try {
+    const storedSession = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
+    if (storedSession) {
+      return JSON.parse(storedSession);
     }
+  } catch (error) {
+    console.error('Error parsing stored session:', error);
   }
   return null;
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -51,115 +48,123 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      return { isIssuer: profile?.is_issuer || false, name: profile?.name };
+      
+      if (!profile) {
+        return { isIssuer: false, name: null };
+      }
+
+      return { 
+        isIssuer: profile.is_issuer || false, 
+        name: profile.name 
+      };
     } catch (error) {
       console.error('Error checking issuer status:', error);
+      toast.error('Failed to fetch user profile');
       return { isIssuer: false, name: null };
     }
   };
 
-  const handleAuthStateChange = async (sessionUser: User | null) => {
-    console.log("handleAuthStateChange called with user:", sessionUser);
-    
-    // If no session user, try localStorage
-    if (!sessionUser) {
-      const storedUser = getStoredUser();
-      if (storedUser) {
-        sessionUser = storedUser;
-      } else {
-        setUser(null);
-        setIsIssuer(false);
-        if (location.pathname !== '/auth' && location.pathname !== '/register') {
-          navigate('/auth');
-        }
-        return;
-      }
-    }
-setLoading(false);
+  const initializeAuth = async () => {
     try {
-      const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
-      setUser(sessionUser);
-      setIsIssuer(newIsIssuer);
+      // First check local storage
+      const storedSession = getStoredSession();
+      const initialUser = storedSession?.user || null;
 
-      if (!name) {
-        if (location.pathname !== '/register') {
+      // Then verify with Supabase
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+
+      const sessionUser = session?.user || initialUser;
+
+      if (sessionUser) {
+        const { isIssuer: userIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
+        
+        setUser(sessionUser);
+        setIsIssuer(userIsIssuer);
+
+        // Handle navigation based on profile status
+        if (!name && location.pathname !== '/register') {
           navigate('/register');
         }
-      } else if (location.pathname === '/auth') {
-        navigate('/dashboard');
+      } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
+        navigate('/auth');
       }
     } catch (error) {
-      console.error('Error handling auth state:', error);
+      console.error('Error initializing auth:', error);
+      toast.error('Failed to restore session');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Initialize auth state and set up listeners
-  useEffect(() => {
-    // First try to get user from localStorage
-    const storedUser = getStoredUser();
-    if (storedUser) {
-      handleAuthStateChange(storedUser);
-    }
-
-    // Set up the auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event, session?.user);
-      
+  const handleAuthStateChange = async (event: AuthChangeEvent, sessionUser: User | null) => {
+    console.log('Auth state changed:', event, sessionUser);
+    
+    try {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        await handleAuthStateChange(session?.user || null);
+        if (sessionUser) {
+          const { isIssuer: userIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
+          
+          setUser(sessionUser);
+          setIsIssuer(userIsIssuer);
+
+          if (!name) {
+            navigate('/register');
+          } else if (location.pathname === '/auth') {
+            navigate('/dashboard');
+          }
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
         navigate('/auth');
       }
+    } catch (error) {
+      console.error('Error handling auth state change:', error);
+      toast.error('Failed to update authentication state');
+    }
+  };
+
+  // Initialize auth state and set up listeners
+  useEffect(() => {
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      handleAuthStateChange(event, session?.user || null);
     });
-
-    // Then check Supabase session
-    const checkSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        console.log("Checking initial session:", session);
-        
-        if (session?.user) {
-          await handleAuthStateChange(session.user);
-        } else if (!storedUser && location.pathname !== '/auth' && location.pathname !== '/register') {
-          navigate('/auth');
-        }
-      } catch (error) {
-        console.error("Error checking session:", error);
-        // If session check fails, fall back to stored user
-        if (!storedUser && location.pathname !== '/auth' && location.pathname !== '/register') {
-          navigate('/auth');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkSession();
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
+  // Handle route protection
+  useEffect(() => {
+    if (!loading && !user && location.pathname !== '/auth' && location.pathname !== '/register') {
+      navigate('/auth');
+    }
+  }, [loading, user, location.pathname, navigate]);
+
   const logout = async () => {
     try {
       setLoading(true);
       await supabase.auth.signOut();
-      localStorage.removeItem('supabase.auth.token');
       setUser(null);
       setIsIssuer(false);
       navigate('/auth');
+      toast.success('Logged out successfully');
     } catch (error) {
-      console.error("Error during logout:", error);
+      console.error('Error during logout:', error);
+      toast.error('Failed to log out');
     } finally {
       setLoading(false);
     }
   };
 
-  
-  console.log("AuthProvider state:", { user, isIssuer, loading });
+  console.log('AuthProvider state:', { user, isIssuer, loading });
 
   return (
     <AuthContext.Provider value={{ user, isIssuer, loading, logout }}>
