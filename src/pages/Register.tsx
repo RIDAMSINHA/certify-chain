@@ -24,7 +24,7 @@ const Register = () => {
       }
       if (user.user_metadata && user.user_metadata.name) {
         // If the user already has a name set in their metadata, registration is complete.
-        navigate("/dashboard");
+        navigate("/");
       }
 
       const { data: profile } = await supabase
@@ -34,7 +34,7 @@ const Register = () => {
         .single();
 
       if (profile) {
-        navigate("/dashboard");
+        navigate("/");
       }
     };
 
@@ -85,7 +85,7 @@ const Register = () => {
       }
       
       toast.success("Profile created successfully!");
-      navigate("/dashboard");
+      navigate("/");
     } catch (error) {
       console.error("Error creating profile:", error);
       toast.error("Failed to create profile");

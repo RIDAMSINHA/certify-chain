@@ -47,7 +47,7 @@ const Layout = ({ children }: LayoutProps) => {
 
   const menuItems = [
     { path: "/", label: "Home", icon: Home },
-    { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { path: isIssuer ? "/dashboard" : "/userdashboard", label: "Dashboard", icon: LayoutDashboard },
     ...(isIssuer ? [{ path: "/issue", label: "Issue Certificate", icon: FilePlus }] : []),
     { path: "/verify", label: "Verify Certificate", icon: ShieldCheck },
   ];

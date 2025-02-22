@@ -128,7 +128,7 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
       // If the wallet address matches and the name exists, the user is fully registered.
       if (currentUser && currentUser.user_metadata) {
         if (currentUser.user_metadata.wallet_address === walletAddress && currentUser.user_metadata.name) {
-          navigate("/dashboard");
+          navigate("/");
         } else {
           navigate("/register");
         }

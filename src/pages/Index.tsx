@@ -73,7 +73,7 @@ const Index = () => {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => navigate(isIssuer ? "/issue" : "/dashboard")}
+            onClick={() => navigate(isIssuer ? "/issue" : "/userdashboard")}
             className="px-8 py-3 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors"
           >
             {isIssuer ? "Issue Certificate" : "View Certificates"}
