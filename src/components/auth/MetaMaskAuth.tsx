@@ -1,9 +1,7 @@
-import { useState } from "react";
 import { Key, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { User } from "@supabase/supabase-js";
 
 interface MetaMaskAuthProps {
   onBack: () => void;
@@ -11,8 +9,8 @@ interface MetaMaskAuthProps {
 
 export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
   const navigate = useNavigate();
-  const [isIssuer, setIsIssuer] = useState(false);
 
+  // Generate a deterministic password from the wallet address
   const generateDeterministicPassword = async (address: string): Promise<string> => {
     const encoder = new TextEncoder();
     const data = encoder.encode(address);
@@ -49,39 +47,96 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
       });
       console.log("✅ Signature received.");
 
-      // Generate a deterministic password based on wallet address
+      // Generate deterministic password and pseudo‑email
       const password = await generateDeterministicPassword(walletAddress);
-      const email = `wallet_${walletAddress}@internal`;
+      const email = `wallet_${walletAddress}@example.com`;
       console.log("🔑 Generated Credentials - Email:", email, "Password:", password);
 
-      // Invoke the Edge Function
-      const response = await fetch(`https://peatdsafjrwjoimjmugm.supabase.co/functions/v1/auth-metamask`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlYXRkc2FmanJ3am9pbWptdWdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk4MTQ0ODYsImV4cCI6MjA1NTM5MDQ4Nn0.EzdiddAq24zmYWnFaBC2oORvrskqA3EWYpbdcNpKjjI"
-         },
-        body: JSON.stringify({ email, password, walletAddress }),
-      });
-      const text = await response.text();
-      console.log("Edge Function Response:", text);
-      const responseData = text ? JSON.parse(text) : {};
-      if (!response.ok) {
-        throw new Error(responseData.error || "Failed to create MetaMask user");
+      // First, check if a profile with this wallet address already exists
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("wallet_address", walletAddress)
+        .single();
+
+      if (profileError && profileError.code !== "PGRST116") {
+        // PGRST116 is "No rows found" error (depending on your Supabase version) – ignore if no row.
+        console.error("Error checking profile:", profileError);
       }
-      
-      console.log("✅ Received session data from Edge Function:", responseData.session);
 
-      // Set the session on the client using the returned tokens
-      const { error: setSessionError } = await supabase.auth.setSession({
-        access_token: responseData.session.access_token,
-        refresh_token: responseData.session.refresh_token,
-      });
-      if (setSessionError) throw setSessionError;
+      if (profile) {
+        console.log("Existing profile found. Logging in directly...");
+        // User exists, so directly sign in using the deterministic credentials.
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw new Error(signInError.message);
+        console.log("✅ Sign-in data:", signInData);
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: signInData.session?.access_token,
+          refresh_token: signInData.session?.refresh_token,
+        });
+        if (setSessionError) throw new Error(setSessionError.message);
+      } else {
+        console.log("No existing profile found. Creating new user via Edge Function...");
+        // Invoke your Edge Function to create a new MetaMask user.
+        const response = await fetch("https://peatdsafjrwjoimjmugm.supabase.co/functions/v1/auth-metamask", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlYXRkc2FmanJ3am9pbWptdWdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk4MTQ0ODYsImV4cCI6MjA1NTM5MDQ4Nn0.EzdiddAq24zmYWnFaBC2oORvrskqA3EWYpbdcNpKjjI"
+          },
+          body: JSON.stringify({ email, password, walletAddress }),
+        });
+        const text = await response.text();
+        console.log("Edge Function Response:", text);
+        const responseData = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+          // If the error indicates that the user is already registered...
+          if (responseData.error && responseData.error.includes("already been registered")) {
+            console.warn("Edge Function indicates user is already registered. Signing in directly...");
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+            if (signInError) throw new Error(signInError.message);
+            console.log("✅ Sign-in data:", signInData);
+            const { error: setSessionError } = await supabase.auth.setSession({
+              access_token: signInData.session?.access_token,
+              refresh_token: signInData.session?.refresh_token,
+            });
+            if (setSessionError) throw new Error(setSessionError.message);
+          } else {
+            throw new Error(responseData.error || "Failed to create MetaMask user");
+          }
+        } else {
+          console.log("✅ Received session data from Edge Function:", responseData.session);
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: responseData.session.access_token,
+            refresh_token: responseData.session.refresh_token,
+          });
+          if (setSessionError) throw new Error(setSessionError.message);
+        }
+      }
 
-      console.log("✅ Successfully authenticated with MetaMask.");
+      // Now, check the user's metadata to decide where to navigate.
+      const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
+      if (getUserError) throw getUserError;
+      console.log("Current user metadata:", currentUser?.user_metadata);
+
+      // If the wallet address matches and the name exists, the user is fully registered.
+      if (currentUser && currentUser.user_metadata) {
+        if (currentUser.user_metadata.wallet_address === walletAddress && currentUser.user_metadata.name) {
+          navigate("/dashboard");
+        } else {
+          navigate("/register");
+        }
+      } else {
+        navigate("/register");
+      }
+
       toast.success("Signed in with MetaMask successfully");
-      navigate("/dashboard");
     } catch (error) {
       console.error("🚨 Error signing in with MetaMask:", error);
       toast.error("Failed to sign in with MetaMask");
@@ -91,16 +146,7 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center">
-        <input
-          id="metamask-is-issuer"
-          type="checkbox"
-          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-          checked={isIssuer}
-          onChange={(e) => setIsIssuer(e.target.checked)}
-        />
-        <label htmlFor="metamask-is-issuer" className="ml-2 text-sm text-gray-900">
-          Register as HR/Issuer
-        </label>
+        
       </div>
       <button
         type="button"

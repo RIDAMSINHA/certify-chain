@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -49,24 +48,28 @@ const Auth = () => {
             {isSignUp ? "Create your account" : "Sign in to your account"}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {isSignUp ? "Already have an account? " : "Don't have an account? "}
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setIsMetaMaskLogin(false);
-              }}
-              className="font-medium text-blue-600 hover:text-blue-500"
-            >
-              {isSignUp ? "Sign in" : "Create one"}
-            </button>
+            {!isMetaMaskLogin && (
+              <>
+                {isSignUp
+                  ? "Already have an account? "
+                  : "Don't have an account? "}
+                <button
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setIsMetaMaskLogin(false);
+                  }}
+                  className="font-medium text-blue-600 hover:text-blue-500"
+                >
+                  {isSignUp ? "Sign in" : "Create one"}
+                </button>
+              </>
+            )}
           </p>
         </div>
 
         <div className="mt-8 space-y-6">
           {isMetaMaskLogin ? (
-            <MetaMaskAuth
-              onBack={() => setIsMetaMaskLogin(false)}
-            />
+            <MetaMaskAuth onBack={() => setIsMetaMaskLogin(false)} />
           ) : (
             <>
               <EmailAuthForm
@@ -77,7 +80,7 @@ const Auth = () => {
                   }
                 }}
               />
-              
+
               {!isSignUp && (
                 <div className="space-y-4">
                   <button

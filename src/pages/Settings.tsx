@@ -80,14 +80,42 @@ const Settings = () => {
         return;
       }
 
-      const { error: updateError } = await supabase.auth.updateUser({
-        email: email,
-        password: password,
+      const userId = user?.id;
+      const newEmail = email;
+      const response = await fetch("https://peatdsafjrwjoimjmugm.supabase.co/functions/v1/updateEmail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlYXRkc2FmanJ3am9pbWptdWdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk4MTQ0ODYsImV4cCI6MjA1NTM5MDQ4Nn0.EzdiddAq24zmYWnFaBC2oORvrskqA3EWYpbdcNpKjjI"
+        },
+        body: JSON.stringify({ userId, newEmail, password }),
       });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update user metadata");
+      }
+      console.log("Updated user:", data.user);
 
-      if (updateError) throw updateError;
+      // Re-fetch the session to get updated tokens and user data.
+    const { data: { session: newSession }, error: getSessionError } = await supabase.auth.getSession();
+    if (getSessionError) {
+      throw getSessionError;
+    }
+    if (!newSession) {
+      throw new Error("No new session found");
+    }
+    console.log("New session data:", newSession);
 
-      toast.success("Email linked successfully!");
+    // Set the session on the client so that the localStorage gets updated
+    const { error: setSessionError } = await supabase.auth.setSession({
+      access_token: newSession.access_token,
+      refresh_token: newSession.refresh_token,
+    });
+    if (setSessionError) {
+      throw setSessionError;
+    }
+
+    toast.success("Email linked and session updated successfully!");
       setEmail("");
       setPassword("");
     } catch (error) {
@@ -148,7 +176,7 @@ const Settings = () => {
             </div>
           )}
 
-          {user?.email?.includes('placeholder.com') && (
+          {user?.email?.includes('placeholder') && (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Email</label>

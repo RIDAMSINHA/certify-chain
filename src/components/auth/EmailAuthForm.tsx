@@ -103,8 +103,8 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
       }
       onSuccess();
     } catch (error) {
-      console.error("Error:", error);
-      toast.error(isSignUp ? "Failed to sign up" : "Failed to sign in");
+      console.error("Error:", error.message);
+      toast.error(isSignUp ? `Failed to sign up: ${error.message}` : `Failed to sign in: ${error.message}`);
     } finally {
       setIsLoading(false);
     }

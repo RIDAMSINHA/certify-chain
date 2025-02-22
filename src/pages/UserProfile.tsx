@@ -41,6 +41,7 @@ const UserProfile = () => {
           ...profileData,
           certificates: certificates || [],
         });
+        console.log("Profile data:", profileData);
       } catch (error) {
         console.error("Error fetching profile:", error);
         toast.error("Failed to load profile");

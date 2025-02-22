@@ -22,6 +22,10 @@ const Register = () => {
         navigate("/auth");
         return;
       }
+      if (user.user_metadata && user.user_metadata.name) {
+        // If the user already has a name set in their metadata, registration is complete.
+        navigate("/dashboard");
+      }
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -44,11 +48,24 @@ const Register = () => {
     try {
       if (!user) throw new Error("No user found");
 
+      // Update the user's metadata so that raw_user_meta_data includes name and is_issuer
+      const { data, error } = await supabase.auth.updateUser({
+        data: {
+          name: formData.name,
+          is_issuer: formData.isIssuer,
+        },
+      });
+
+      if (error) throw error;
+
+      console.log("Updated user metadata:", data);
+
       const { error: profileError } = await supabase
         .from("profiles")
         .insert([
           {
             id: user.id,
+            wallet_address: user.user_metadata.wallet_address,
             name: formData.name,
             is_issuer: formData.isIssuer,
           },
@@ -56,6 +73,17 @@ const Register = () => {
 
       if (profileError) throw profileError;
 
+      // Refresh the session to get the latest metadata.
+      const { data: { session: newSession }, error: getSessionError } = await supabase.auth.getSession();
+      if (getSessionError) throw getSessionError;
+      if (newSession) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: newSession.access_token,
+          refresh_token: newSession.refresh_token,
+        });
+        if (setSessionError) throw setSessionError;
+      }
+      
       toast.success("Profile created successfully!");
       navigate("/dashboard");
     } catch (error) {
