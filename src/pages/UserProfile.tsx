@@ -67,7 +67,7 @@ const UserProfile = () => {
   }
 
   if (!profile) {
-    return <div>Profile not found</div>;
+    return <div>Profile not found. Try logging in again...</div>;
   }
 
   return (
