@@ -20,11 +20,13 @@ const AuthContext = createContext<AuthContextType>({
 
 // Helper function to get user from localStorage
 const getStoredUser = (): User | null => {
-  const storedUser = localStorage.getItem('supabase.auth.token');
+  const storedUser = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
+  // console.log("Stored user:", storedUser); 
   if (storedUser) {
     try {
-      const { currentSession } = JSON.parse(storedUser);
-      return currentSession?.user || null;
+      const session  = JSON.parse(storedUser);
+      // console.log("Parsed currentSession:", session );
+      return session?.user || null;
     } catch (error) {
       console.error('Error parsing stored user:', error);
       return null;
@@ -73,7 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
     }
-
+setLoading(false);
     try {
       const { isIssuer: newIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
       setUser(sessionUser);
@@ -156,6 +158,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  
   console.log("AuthProvider state:", { user, isIssuer, loading });
 
   return (
