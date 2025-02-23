@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Mail } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -212,8 +212,17 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
         disabled={isLoading}
         className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
       >
-        <Mail className="w-4 h-4 mr-2" />
-        {isSignUp ? "Sign up with Email" : "Sign in with Email"}
+        {isLoading ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            {isSignUp ? "Signing up..." : "Signing in..."}
+          </>
+        ) : (
+          <>
+            <Mail className="w-4 h-4 mr-2" />
+            {isSignUp ? "Sign up with Email" : "Sign in with Email"}
+          </>
+        )}
       </button>
     </form>
   );

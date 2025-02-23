@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Award, Calendar, Building, ExternalLink, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from '@/providers/AuthProvider';
 
 interface Certificate {
   id: string;
@@ -24,6 +25,7 @@ const CertificateView = () => {
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [loading, setLoading] = useState(true);
   const [userCertificate, setUserCertificate] = useState<Certificate | null>(null);
+  const {isIssuer} = useAuth();
 
   useEffect(() => {
     fetchCertificate();
@@ -101,7 +103,7 @@ const CertificateView = () => {
               <Button 
                 variant="link" 
                 className="p-0 text-blue-700 underline"
-                onClick={() => navigate('/userdashboard')}
+                onClick={() => navigate(isIssuer ? '/dashboard' : '/userdashboard')}
               >
                 dashboard
               </Button>

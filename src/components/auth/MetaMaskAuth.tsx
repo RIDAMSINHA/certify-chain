@@ -1,8 +1,8 @@
-
-import { Key, ArrowLeft } from "lucide-react";
+import { Key, ArrowLeft, Loader } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 interface MetaMaskAuthProps {
   onBack: () => void;
@@ -10,6 +10,7 @@ interface MetaMaskAuthProps {
 
 export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
   // Generate a deterministic password from the wallet address
   const generateDeterministicPassword = async (address: string): Promise<string> => {
@@ -22,6 +23,7 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
 
   const handleMetaMaskSignIn = async () => {
     try {
+      setLoading(true);
       console.log("🚀 Starting MetaMask Sign-In...");
 
       if (!window.ethereum) {
@@ -141,6 +143,8 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
     } catch (error) {
       console.error("🚨 Error signing in with MetaMask:", error);
       toast.error("Failed to sign in with MetaMask");
+    } finally {
+      setLoading(false); // Stop loader
     }
   };
 
@@ -152,10 +156,11 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
       <button
         type="button"
         onClick={handleMetaMaskSignIn}
+        disabled={loading}
         className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
       >
-        <Key className="w-4 h-4 mr-2" />
-        Connect with MetaMask
+        {loading ? <Loader className="w-4 h-4 mr-2 animate-spin" /> : <Key className="w-4 h-4 mr-2" />}
+        {loading ? "Connecting..." : "Connect with MetaMask"}
       </button>
       <button
         type="button"
