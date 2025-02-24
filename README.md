@@ -1,5 +1,5 @@
 Check it out on :-
-https://certiverse-collective.lovable.app/
+https://certify-chain.lovable.app/
 
 
 OR
