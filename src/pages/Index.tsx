@@ -4,15 +4,30 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/providers/AuthProvider";
 import { motion } from "framer-motion";
 import { Shield, Scroll, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const navigate = useNavigate();
   const { user, isIssuer, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate("/auth");
-    }
+    async function checkProfile() {
+      const userId = user?.id;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!profile) {
+        navigate("/auth");
+      }else{
+          if (!loading && !user) {
+            navigate("/auth");
+          }
+        }
+      }
+
+    checkProfile();
   }, [user, loading, navigate]);
 
   if (loading || !user) {

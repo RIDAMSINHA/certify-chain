@@ -1,9 +1,9 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { User } from "@supabase/supabase-js";
 
 interface EmailAuthFormProps {
   isSignUp: boolean;
@@ -29,6 +29,37 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
     name: "",
   });
 
+  // Helper function to check if a profile exists, and if not, create it.
+  const createProfileIfMissing = async (
+    user: User,
+    name?: string,
+    isIssuer?: boolean
+  ) => {
+    const { data: profile, error: profileSelectError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileSelectError) {
+      throw new Error("Error checking profile");
+    }
+    if (!profile) {
+      const { error: profileUpsertError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: user.id,
+          name: name || user.email,
+          is_issuer: isIssuer || false,
+          wallet_address: null,
+        });
+      if (profileUpsertError) {
+        throw new Error("Failed to create or update profile");
+      }
+    }
+  };
+
+  // Handle form submission for both sign-up and sign-in flows.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSignUp && formData.password !== formData.confirmPassword) {
@@ -39,7 +70,8 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        const { error: signUpError, data } = await supabase.auth.signUp({
+        // For new sign-ups, use emailRedirectTo so the user is redirected to /auth after clicking the email link.
+        const { error: signUpError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -49,15 +81,14 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
             },
           },
         });
-
         if (signUpError) throw signUpError;
         toast.success("Check your email to confirm your account");
       } else {
-        const { error: signInError, data: signInData } =
-          await supabase.auth.signInWithPassword({
-            email: formData.email,
-            password: formData.password,
-          });
+        // For direct sign-in using email/password.
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
         if (signInError) throw signInError;
 
         const {
@@ -68,43 +99,24 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
           throw new Error("No active session found");
         }
 
-        const userId = session.user.id;
-        const { data: profile, error: profileSelectError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
+        // Check if a profile exists; if not, create one using form data when available.
+        await createProfileIfMissing(
+          session.user,
+          formData.name,
+          formData.isIssuer
+        );
 
-        if (profileSelectError) {
-          console.error("Error checking profile:", profileSelectError);
-          toast.error("Error checking profile");
-          return;
-        }
-
-        if (!profile) {
-          const { error: profileUpsertError } = await supabase
-            .from("profiles")
-            .upsert([
-              {
-                id: userId,
-                name: formData.name || session.user.email,
-                is_issuer: formData.isIssuer,
-                wallet_address: null,
-              },
-            ]);
-          if (profileUpsertError) {
-            console.error("Profile creation error:", profileUpsertError);
-            toast.error("Failed to create or update profile");
-            return;
-          }
-        }
         toast.success("Signed in successfully");
         navigate("/");
       }
       onSuccess();
     } catch (error) {
       console.error("Error:", error.message);
-      toast.error(isSignUp ? `Failed to sign up: ${error.message}` : `Failed to sign in: ${error.message}`);
+      toast.error(
+        isSignUp
+          ? `Failed to sign up: ${error.message}`
+          : `Failed to sign in: ${error.message}`
+      );
     } finally {
       setIsLoading(false);
     }
@@ -125,9 +137,7 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
             className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
             placeholder="Full Name"
             value={formData.name}
-            onChange={(e) =>
-              setFormData({ ...formData, name: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           />
         </div>
       )}
@@ -143,9 +153,7 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
           className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
           placeholder="Email address"
           value={formData.email}
-          onChange={(e) =>
-            setFormData({ ...formData, email: e.target.value })
-          }
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
         />
       </div>
       <div>

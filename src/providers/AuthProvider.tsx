@@ -72,14 +72,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Then verify with Supabase
       const { data: { session }, error } = await supabase.auth.getSession();
-      
+      console.log('Session:', session);
       if (error) throw error;
 
       const sessionUser = session?.user || initialUser;
+      console.log('Session User:', sessionUser);
 
       if (sessionUser) {
-        const { isIssuer: userIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
-        
+        const userIsIssuer  = sessionUser.user_metadata.is_issuer;
+        const name = sessionUser.user_metadata.name;
         setUser(sessionUser);
         setIsIssuer(userIsIssuer);
 
@@ -104,7 +105,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (sessionUser) {
-          const { isIssuer: userIsIssuer, name } = await checkIssuerStatus(sessionUser.id);
+          const userIsIssuer = sessionUser.user_metadata.is_issuer;
+          const name = sessionUser.user_metadata.name;
           
           setUser(sessionUser);
           setIsIssuer(userIsIssuer);

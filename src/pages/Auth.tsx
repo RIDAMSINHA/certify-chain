@@ -16,7 +16,7 @@ const Auth = () => {
   const [isMetaMaskLogin, setIsMetaMaskLogin] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && user.user_metadata.profile) {
       toast.info("You are already signed in");
       navigate("/");
     }
