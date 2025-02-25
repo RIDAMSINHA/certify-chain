@@ -66,6 +66,7 @@ export type Database = {
           is_issuer: boolean | null
           name: string | null
           wallet_address: string | null
+          metamask_linked: boolean | null
         }
         Insert: {
           created_at?: string | null
@@ -73,6 +74,7 @@ export type Database = {
           is_issuer?: boolean | null
           name?: string | null
           wallet_address?: string | null
+          metamask_linked?: boolean | null
         }
         Update: {
           created_at?: string | null
@@ -80,6 +82,7 @@ export type Database = {
           is_issuer?: boolean | null
           name?: string | null
           wallet_address?: string | null
+          metamask_linked?: boolean | null
         }
         Relationships: []
       }
