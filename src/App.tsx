@@ -6,15 +6,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import UserDashboard from "./pages/UserDashboard";
-import UserProfile from "./pages/UserProfile";
-import Settings from "./pages/Settings";
 import IssueCertificate from "./pages/IssueCertificate";
 import VerifyCertificate from "./pages/VerifyCertificate";
+import UserProfile from "./pages/UserProfile";
+import Settings from "./pages/Settings";
+import Auth from "./pages/Auth";
+import NotFound from "./pages/NotFound";
+import Register from "./pages/Register";
 import CertificateView from "./pages/CertificateView";
+import ProfileView from "./pages/ProfileView";
 
 const queryClient = new QueryClient();
 
@@ -30,12 +32,14 @@ const App = () => (
             <Route path="/register" element={<Register />} />
             <Route path="/userdashboard" element={<UserDashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            </Routes>
-            <Route path="/profile/:id" element={<UserProfile />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/certificates/:publicUrl" element={<CertificateView />} />
+            <Route path="/userprofile/:certificates" element={<ProfileView />} />
             <Route path="/issue" element={<IssueCertificate />} />
             <Route path="/verify" element={<VerifyCertificate />} />
-            <Route path="/certificates/:publicUrl" element={<CertificateView />} />
+            <Route path="/profile/:id" element={<UserProfile />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </Layout>
     </TooltipProvider>
   </QueryClientProvider>
