@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Key } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { EmailAuthForm } from "@/components/auth/EmailAuthForm";
+import { MetaMaskAuth } from "@/components/auth/MetaMaskAuth";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -66,7 +68,48 @@ const Auth = () => {
           </p>
         </div>
 
-       
+        <div className="mt-8 space-y-6">
+          {isMetaMaskLogin ? (
+            <MetaMaskAuth onBack={() => setIsMetaMaskLogin(false)} />
+          ) : (
+            <>
+              <EmailAuthForm
+                isSignUp={isSignUp}
+                onSuccess={() => {
+                  if (!isSignUp) {
+                    navigate("/");
+                  }
+                }}
+              />
+
+              {!isSignUp && (
+                <div className="space-y-4">
+                  {/* <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <img
+                      src="https://www.google.com/favicon.ico"
+                      alt="Google"
+                      className="w-4 h-4 mr-2"
+                    />
+                    Sign in with Google
+                  </button> */}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsMetaMaskLogin(true)}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <Key className="w-4 h-4 mr-2" />
+                    Connect Wallet
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </motion.div>
     </div>
   );
