@@ -8,6 +8,8 @@ import Layout from "./components/Layout";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import UserDashboard from "./pages/UserDashboard";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +23,8 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/userdashboard" element={<UserDashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
         </Layout>
     </TooltipProvider>
