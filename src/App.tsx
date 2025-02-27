@@ -4,6 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import Index from "./pages/Index";
 
 const queryClient = new QueryClient();
 
@@ -12,11 +14,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-        
+        <Layout>
           <Routes>
-           
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
           </Routes>
-  
+        </Layout>
     </TooltipProvider>
   </QueryClientProvider>
 );
