@@ -14,6 +14,7 @@ import UserProfile from "./pages/UserProfile";
 import Settings from "./pages/Settings";
 import IssueCertificate from "./pages/IssueCertificate";
 import VerifyCertificate from "./pages/VerifyCertificate";
+import CertificateView from "./pages/CertificateView";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
             <Route path="/issue" element={<IssueCertificate />} />
             <Route path="/verify" element={<VerifyCertificate />} />
+            <Route path="/certificates/:publicUrl" element={<CertificateView />} />
         </Layout>
     </TooltipProvider>
   </QueryClientProvider>
