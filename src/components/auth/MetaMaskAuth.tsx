@@ -79,45 +79,6 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
       if (profile) {
         console.log("Profile found. Logging in directly...", profile);
 
-        if (profile.metamask_linked) {
-          try {
-            // Send all required parameters: walletAddress, signature, and message
-            const body = JSON.stringify({ walletAddress, signature, message });
-            console.log("Sending body:", body);
-            const response = await fetch(
-              "https://peatdsafjrwjoimjmugm.supabase.co/functions/v1/auth-metamask-login",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization:
-                    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlYXRkc2FmanJ3am9pbWptdWdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk4MTQ0ODYsImV4cCI6MjA1NTM5MDQ4Nn0.EzdiddAq24zmYWnFaBC2oORvrskqA3EWYpbdcNpKjjI",
-                },
-                body,
-              }
-            );
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(
-                errorData.error || "Failed to log in via MetaMask"
-              );
-            }
-            const responseData = await response.json();
-            const { access_token, refresh_token } = responseData.session;
-            console.log("✅ Received session data:", responseData.session);
-            const { error: setSessionError } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-            if (setSessionError) throw new Error(setSessionError.message);
-            toast.success("Signed in with MetaMask successfully");
-            navigate("/");
-            return;
-          } catch (error) {
-            toast.error("Error logging in via MetaMask:", error.message);
-            console.error("Error logging in via MetaMask:", error);
-          }
-        }
 
         // If the profile exists but is not metamask_linked, sign in using the deterministic credentials.
         const { data: signInData, error: signInError } =
