@@ -10,6 +10,8 @@ import Auth from "./pages/Auth";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import UserDashboard from "./pages/UserDashboard";
+import UserProfile from "./pages/UserProfile";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -25,7 +27,9 @@ const App = () => (
             <Route path="/register" element={<Register />} />
             <Route path="/userdashboard" element={<UserDashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
-          </Routes>
+            </Routes>
+            <Route path="/profile/:id" element={<UserProfile />} />
+            <Route path="/settings" element={<Settings />} />
         </Layout>
     </TooltipProvider>
   </QueryClientProvider>
