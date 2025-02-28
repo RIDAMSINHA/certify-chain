@@ -1,14 +1,14 @@
-
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { FilePlus, ArrowRight } from "lucide-react";
+import { FilePlus, ArrowRight, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Award, Calendar, ExternalLink, Eye } from "lucide-react";
+import { Award, Calendar, ExternalLink, Eye, Building } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { generateCertificateDescription, validateCertificateContent } from "@/utils/ai";
 
 interface Certificate {
   id: string;
@@ -18,6 +18,8 @@ interface Certificate {
   status: string;
   created_at: string;
   public_url: string;
+  priority: number;
+  issuer_id: string;
 }
 
 const IssueCertificate = () => {
@@ -31,6 +33,9 @@ const IssueCertificate = () => {
   });
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<any>(null);
 
   useEffect(() => {
     fetchIssuedCertificates();
@@ -53,12 +58,54 @@ const IssueCertificate = () => {
     }
   };
 
+  const handleGenerateDescription = async () => {
+    if (!formData.title) {
+      toast.error("Please enter a title first");
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    try {
+      const description = await generateCertificateDescription(formData.title);
+      setFormData({ ...formData, description });
+      toast.success("Description generated successfully");
+    } catch (error) {
+      console.error("Error generating description:", error);
+      toast.error("Failed to generate description");
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  };
+
+  const validateCertificate = async () => {
+    if (!formData.title || !formData.description) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const result = await validateCertificateContent(formData.title, formData.description);
+      setValidationResult(result);
+      
+      if (result.isValid) {
+        toast.success(`Certificate content validated (Score: ${result.score})`);
+      } else {
+        toast.warning("Certificate content needs improvement");
+      }
+    } catch (error) {
+      console.error("Error validating certificate:", error);
+      toast.error("Failed to validate certificate");
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Validate Ethereum address
       if (!formData.recipient_address.match(/^0x[a-fA-F0-9]{40}$/)) {
         throw new Error("Invalid Ethereum address");
       }
@@ -93,7 +140,7 @@ const IssueCertificate = () => {
   const shareUrl = (publicUrl: string) => {
     const shareableUrl = `${window.location.origin}/certificates/${publicUrl}`;
     navigator.clipboard.writeText(shareableUrl);
-    toast.success("Share link copied to clipboard");
+    toast.success('Share link copied to clipboard');
   };
 
   if (loading) {
@@ -140,16 +187,35 @@ const IssueCertificate = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="e.g., Web Development Certification"
                 value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGenerateDescription}
+                  disabled={isGeneratingDescription || !formData.title}
+                >
+                  {isGeneratingDescription ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      Generate with AI
+                    </>
+                  )}
+                </Button>
+              </div>
               <textarea
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -181,20 +247,59 @@ const IssueCertificate = () => {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex items-center justify-center space-x-2 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {isLoading ? (
-                "Issuing..."
-              ) : (
-                <>
-                  <span>Issue Certificate</span>
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+            {validationResult && (
+              <div className={`p-4 rounded-lg ${
+                validationResult.isValid ? "bg-green-50" : "bg-yellow-50"
+              }`}>
+                <h4 className="font-medium mb-2">AI Validation Results</h4>
+                <p className="text-sm mb-2">Score: {validationResult.score}/100</p>
+                <p className="text-sm mb-2">{validationResult.feedback}</p>
+                {validationResult.suggestedImprovements.length > 0 && (
+                  <ul className="text-sm list-disc list-inside">
+                    {validationResult.suggestedImprovements.map((improvement: string, index: number) => (
+                      <li key={index}>{improvement}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={validateCertificate}
+                disabled={isValidating || !formData.title || !formData.description}
+                className="flex-1"
+              >
+                {isValidating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Validating...
+                  </>
+                ) : (
+                  "Validate Content"
+                )}
+              </Button>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Issuing...
+                  </>
+                ) : (
+                  <>
+                    <span>Issue Certificate</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
           </form>
         </motion.div>
       </div>
@@ -210,18 +315,15 @@ const IssueCertificate = () => {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <Award className="w-10 h-10 text-blue-500" />
+                  <Award className={`w-10 h-10 ${cert.priority === 1 ? 'text-yellow-500' : 'text-blue-500'}`} />
                   <div>
-                    <h3 className="text-xl font-semibold">{cert.title}</h3>
+                    <h2 className="text-xl font-semibold">{cert.title}</h2>
                     <div className="flex items-center gap-2 text-gray-600 mt-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>
-                        {new Date(cert.created_at).toLocaleDateString()}
-                      </span>
+                      <Building className="w-4 h-4" />
+                      <span>Issued by: {cert.issuer_id}</span>
+                      <Calendar className="w-4 h-4 ml-2" />
+                      <span>{new Date(cert.created_at).toLocaleDateString()}</span>
                     </div>
-                    <p className="text-gray-600 mt-2">
-                      Recipient: {cert.recipient_address}
-                    </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -254,12 +356,8 @@ const IssueCertificate = () => {
           {certificates.length === 0 && (
             <div className="text-center py-12 bg-white rounded-lg">
               <Award className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-600">
-                No Certificates Issued
-              </h3>
-              <p className="text-gray-500 mt-2">
-                Start issuing certificates to see them here
-              </p>
+              <h3 className="text-xl font-semibold text-gray-600">No Certificates Issued</h3>
+              <p className="text-gray-500 mt-2">Start issuing certificates to see them here</p>
             </div>
           )}
         </div>

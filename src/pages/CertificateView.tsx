@@ -3,10 +3,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Award, Calendar, Building, ExternalLink, Lock } from "lucide-react";
+import { Award, Calendar, Building, ExternalLink, Lock, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from '@/providers/AuthProvider';
+import { analyzeCertificateValue, generateShareableHighlights } from '@/utils/ai';
 
 interface Certificate {
   id: string;
@@ -19,12 +20,23 @@ interface Certificate {
   public_url: string;
 }
 
+interface MarketInsights {
+  industryDemand: string;
+  careerOpportunities: string[];
+  salaryImpact: string;
+  futureRelevance: string;
+  relatedCertifications: string[];
+}
+
 const CertificateView = () => {
   const { publicUrl } = useParams();
   const navigate = useNavigate();
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [loading, setLoading] = useState(true);
   const [userCertificate, setUserCertificate] = useState<Certificate | null>(null);
+  const [marketInsights, setMarketInsights] = useState<MarketInsights | null>(null);
+  const [shareableHighlights, setShareableHighlights] = useState<string[]>([]);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const {isIssuer} = useAuth();
 
   useEffect(() => {
@@ -33,7 +45,6 @@ const CertificateView = () => {
 
   const fetchCertificate = async () => {
     try {
-      // Fetch the public certificate
       const { data, error } = await supabase
         .from('certificates')
         .select('*')
@@ -48,7 +59,6 @@ const CertificateView = () => {
         return;
       }
 
-      // If certificate is private, redirect to login
       if (data.status === 'private') {
         toast.error('This certificate is private');
         navigate('/');
@@ -57,7 +67,10 @@ const CertificateView = () => {
 
       setCertificate(data);
 
-      // Check if current user also owns this certificate
+      // Load AI insights
+      loadMarketInsights(data.title, data.description);
+      loadShareableHighlights(data.title, data.description);
+
       const { data: userData, error: userError } = await supabase
         .from('certificates')
         .select('*')
@@ -74,6 +87,27 @@ const CertificateView = () => {
       toast.error('Failed to load certificate');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMarketInsights = async (title: string, description: string) => {
+    setIsLoadingInsights(true);
+    try {
+      const insights = await analyzeCertificateValue(title, description);
+      setMarketInsights(insights);
+    } catch (error) {
+      console.error('Error loading market insights:', error);
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  };
+
+  const loadShareableHighlights = async (title: string, description: string) => {
+    try {
+      const highlights = await generateShareableHighlights(title, description);
+      setShareableHighlights(highlights);
+    } catch (error) {
+      console.error('Error loading shareable highlights:', error);
     }
   };
 
@@ -134,6 +168,65 @@ const CertificateView = () => {
                 </p>
               </div>
             </div>
+
+            {isLoadingInsights ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <span>Loading market insights...</span>
+              </div>
+            ) : marketInsights && (
+              <div className="border-t pt-6">
+                <h2 className="text-lg font-semibold mb-4">Market Insights</h2>
+                <div className="grid gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="font-medium mb-2">Industry Demand</h3>
+                    <p className="text-gray-700">{marketInsights.industryDemand}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h3 className="font-medium mb-2">Career Opportunities</h3>
+                    <ul className="list-disc list-inside">
+                      {marketInsights.careerOpportunities.map((opportunity, index) => (
+                        <li key={index} className="text-gray-700">{opportunity}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h3 className="font-medium mb-2">Salary Impact</h3>
+                    <p className="text-gray-700">{marketInsights.salaryImpact}</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h3 className="font-medium mb-2">Future Relevance</h3>
+                    <p className="text-gray-700">{marketInsights.futureRelevance}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {shareableHighlights.length > 0 && (
+              <div className="border-t pt-6">
+                <h2 className="text-lg font-semibold mb-4">Share These Highlights</h2>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  {shareableHighlights.map((highlight, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 mb-2 p-2 bg-white rounded border border-gray-200"
+                    >
+                      <p className="flex-1">{highlight}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(highlight);
+                          toast.success("Copied to clipboard!");
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       </div>
