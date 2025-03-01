@@ -1,9 +1,9 @@
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Award, Calendar, Building, ExternalLink, Lock, Loader2 } from "lucide-react";
+import { Award, Calendar, Building, ExternalLink, Lock, Loader2, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from '@/providers/AuthProvider';
@@ -37,11 +37,28 @@ const CertificateView = () => {
   const [marketInsights, setMarketInsights] = useState<MarketInsights | null>(null);
   const [shareableHighlights, setShareableHighlights] = useState<string[]>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
-  const {isIssuer} = useAuth();
+  const {user, isIssuer} = useAuth();
+  const location = useLocation();
+  const [cameFromProfile, setCameFromProfile] = useState(false);
 
   useEffect(() => {
+    const referrer = document.referrer;
+    if (referrer && referrer.includes('/userprofile/')) {
+      setCameFromProfile(true);
+    }
+
     fetchCertificate();
   }, [publicUrl]);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      toast.info("Please log in to view certificate details");
+      // Store the intended redirect URL in session storage
+      sessionStorage.setItem('redirectAfterLogin', `/certificates/${publicUrl}`);
+      navigate('/auth');
+    }
+  }, [user, loading, navigate, publicUrl]);
 
   const fetchCertificate = async () => {
     try {
@@ -59,29 +76,31 @@ const CertificateView = () => {
         return;
       }
 
-      if (data.status === 'private') {
-        toast.error('This certificate is private');
-        navigate('/');
-        return;
-      }
+      // if (data.status === 'private') {
+      //   toast.error('This certificate is private');
+      //   navigate('/');
+      //   return;
+      // }
 
       setCertificate(data);
 
-      // Load AI insights
-      loadMarketInsights(data.title, data.description);
-      loadShareableHighlights(data.title, data.description);
+      // Only load AI insights if user is authenticated
+      if (user) {
+        // Load AI insights
+        loadMarketInsights(data.title, data.description);
+        loadShareableHighlights(data.title, data.description);
 
-      const { data: userData, error: userError } = await supabase
-        .from('certificates')
-        .select('*')
-        .eq('recipient_address', data.recipient_address)
-        .eq('title', data.title)
-        .maybeSingle();
+        const { data: userData, error: userError } = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('recipient_address', data.recipient_address)
+          .eq('title', data.title)
+          .maybeSingle();
 
-      if (!userError && userData) {
-        setUserCertificate(userData);
+        if (!userError && userData) {
+          setUserCertificate(userData);
+        }
       }
-
     } catch (error) {
       console.error('Error fetching certificate:', error);
       toast.error('Failed to load certificate');
@@ -111,6 +130,14 @@ const CertificateView = () => {
     }
   };
 
+  const handleGoBack = () => {
+    if (cameFromProfile && certificate) {
+      navigate(`/userprofile/${certificate.public_url}`);
+    } else {
+      navigate(-1);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 p-8 flex items-center justify-center">
@@ -130,6 +157,14 @@ const CertificateView = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-4xl mx-auto">
+      <Button 
+          variant="ghost" 
+          className="mb-6 flex items-center gap-2"
+          onClick={handleGoBack}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
         {userCertificate && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-blue-700">
@@ -202,7 +237,7 @@ const CertificateView = () => {
               </div>
             )}
 
-            {shareableHighlights.length > 0 && (
+            {/* {shareableHighlights.length > 0 && (
               <div className="border-t pt-6">
                 <h2 className="text-lg font-semibold mb-4">Share These Highlights</h2>
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -226,7 +261,7 @@ const CertificateView = () => {
                   ))}
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         </Card>
       </div>

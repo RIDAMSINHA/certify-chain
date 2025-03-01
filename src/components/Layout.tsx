@@ -1,15 +1,15 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { 
-  Award, 
-  Home, 
-  ShieldCheck, 
-  FilePlus, 
+import {
+  Award,
+  Home,
+  ShieldCheck,
+  FilePlus,
   LayoutDashboard,
   Menu,
   X,
-  LogOut
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,12 +26,22 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const { user, isIssuer, loading } = useAuth();
 
-  // Protect routes: if not loading, no user, and the current route is not "/auth" or "/register", redirect to "/auth".
+  // Protect routes: if not loading, no user, and route is not "/auth", "/register", or a public share page, redirect to "/auth".
+  const isPublicSharePage =
+    location.pathname.includes("/certificates/") ||
+    location.pathname.includes("/userprofile/");
+
   useEffect(() => {
-    if (!loading && !user && location.pathname !== "/auth" && location.pathname !== "/register") {
+    if (
+      !loading &&
+      !user &&
+      location.pathname !== "/auth" &&
+      location.pathname !== "/register" && 
+      !isPublicSharePage
+    ) {
       navigate("/auth");
     }
-  }, [loading, user, location.pathname, navigate]);
+  }, [loading, user, location.pathname, navigate, isPublicSharePage]);
 
   const handleLogout = async () => {
     try {
@@ -46,15 +56,22 @@ const Layout = ({ children }: LayoutProps) => {
 
   const menuItems = [
     { path: "/", label: "Home", icon: Home },
-    { path: isIssuer ? "/dashboard" : "/userdashboard", label: "Dashboard", icon: LayoutDashboard },
-    ...(isIssuer ? [{ path: "/issue", label: "Issue Certificate", icon: FilePlus }] : []),
+    {
+      path: isIssuer ? "/dashboard" : "/userdashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+    },
+    ...(isIssuer
+      ? [{ path: "/issue", label: "Issue Certificate", icon: FilePlus }]
+      : []),
     { path: "/verify", label: "Verify Certificate", icon: ShieldCheck },
   ];
 
-  // Don't show sidebar on auth page (and optionally on register page if you want to keep the register page simple)
-  if (location.pathname === "/auth" || location.pathname === "/register") {
+  // Don't show sidebar on auth page, register page, or public share pages
+  if (location.pathname === "/auth" || location.pathname === "/register" || isPublicSharePage) {
     return <>{children}</>;
   }
+
   if (loading && location.pathname !== "/register") {
     return <div>Loading...</div>;
   }
@@ -62,7 +79,7 @@ const Layout = ({ children }: LayoutProps) => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       <Header />
-      
+
       {/* Mobile menu button */}
       <button
         className="fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg md:hidden"
@@ -94,9 +111,11 @@ const Layout = ({ children }: LayoutProps) => {
                     <Link
                       to={item.path}
                       className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors
-                        ${location.pathname === item.path 
-                          ? "bg-blue-50 text-blue-600" 
-                          : "hover:bg-gray-50"}`}
+                        ${
+                          location.pathname === item.path
+                            ? "bg-blue-50 text-blue-600"
+                            : "hover:bg-gray-50"
+                        }`}
                     >
                       <Icon size={20} />
                       <span>{item.label}</span>
@@ -110,7 +129,11 @@ const Layout = ({ children }: LayoutProps) => {
       </div>
 
       {/* Main content */}
-      <div className={`transition-all duration-300 ${isSidebarOpen ? "md:ml-64" : "ml-0"}`}>
+      <div
+        className={`transition-all duration-300 ${
+          isSidebarOpen ? "md:ml-64" : "ml-0"
+        }`}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

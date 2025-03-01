@@ -88,7 +88,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (!name && location.pathname !== '/register') {
           navigate('/register');
         }
-      } else if (location.pathname !== '/auth' && location.pathname !== '/register') {
+      } else if (location.pathname !== '/auth' && location.pathname !== '/register' && 
+        !location.pathname.includes('/certificates/') && 
+        !location.pathname.includes('/userprofile/')) {
         navigate('/auth');
       }
     } catch (error) {
@@ -114,13 +116,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!name) {
             navigate('/register');
           } else if (location.pathname === '/auth') {
-            navigate('/dashboard');
+            // Check if there's a redirect URL stored
+            const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+            if (redirectUrl) {
+              sessionStorage.removeItem('redirectAfterLogin');
+              navigate(redirectUrl);
+            } else {
+              navigate('/');
+            }
           }
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
-        navigate('/auth');
+        // Don't redirect to auth if on a public page
+        if (!location.pathname.includes('/certificates/') && 
+            !location.pathname.includes('/userprofile/')) {
+          navigate('/auth');
+        }
       }
     } catch (error) {
       console.error('Error handling auth state change:', error);
@@ -145,7 +158,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Handle route protection
   useEffect(() => {
-    if (!loading && !user && location.pathname !== '/auth' && location.pathname !== '/register') {
+    if (!loading && !user && location.pathname !== '/auth' && location.pathname !== '/register' && 
+      !location.pathname.includes('/certificates/') && 
+      !location.pathname.includes('/userprofile/')) {
       navigate('/auth');
     }
   }, [loading, user, location.pathname, navigate]);
