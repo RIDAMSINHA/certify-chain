@@ -87,6 +87,7 @@ const UserProfile = () => {
           </div>
         </div>
 
+        {!isIssuer && (
         <div className="border-t pt-6">
           <h2 className="text-xl font-semibold mb-4">Certificates</h2>
           <div className="grid gap-4">
@@ -114,6 +115,7 @@ const UserProfile = () => {
             ))}
           </div>
         </div>
+        )}
       </motion.div>
     </div>
   );
