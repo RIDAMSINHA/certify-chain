@@ -180,7 +180,7 @@ const Dashboard = () => {
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto">
         {/* Profile Showcase Container */}
-        <div className="mb-12">
+        <div className="mt-10 mb-12">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">My Profile Showcase</h2>
             <Button 

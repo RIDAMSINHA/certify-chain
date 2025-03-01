@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Award, Building, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,6 +10,7 @@ interface Certificate {
   id: string;
   title: string;
   issuer_id: string;
+  public_url: string;
   created_at: string;
   description?: string;
 }
@@ -18,6 +19,7 @@ const ProfileView = () => {
   const { certificates: certificateUrls } = useParams();
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (certificateUrls) {
@@ -42,6 +44,10 @@ const ProfileView = () => {
     }
   };
 
+  const viewCertificate = (publicUrl: string) => {
+    navigate(`/certificates/${publicUrl}`);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 p-8 flex items-center justify-center">
@@ -57,7 +63,7 @@ const ProfileView = () => {
         
         <div className="grid gap-6">
           {certificates.map((cert) => (
-            <Card key={cert.id} className="p-6">
+            <Card key={cert.id} className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => viewCertificate(cert.public_url)}>
               <div className="flex items-center space-x-4">
                 <Award className="w-10 h-10 text-blue-500" />
                 <div>
