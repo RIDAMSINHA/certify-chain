@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { FilePlus, ArrowRight, Wand2, Loader2 } from "lucide-react";
+import { FilePlus, ArrowRight, Wand2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Award, Calendar, ExternalLink, Eye, Building } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { generateCertificateDescription, validateCertificateContent } from "@/utils/ai";
+import { blockchainService } from "@/utils/blockchain";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Certificate {
-  id: string;
+  blockchain_cert_id: string;
   title: string;
   recipient_address: string;
   description: string;
@@ -36,10 +38,25 @@ const IssueCertificate = () => {
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [ipfsHash, setipfsHash] = useState<any>(null);
 
   useEffect(() => {
+    checkWalletConnection();
     fetchIssuedCertificates();
   }, []);
+
+  const checkWalletConnection = async () => {
+    setIsWalletConnected(blockchainService.isConnected());
+  };
+
+  const connectWallet = async () => {
+    const address = await blockchainService.connectWallet();
+    if (address) {
+      setIsWalletConnected(true);
+      toast.success("Wallet connected successfully");
+    }
+  };
 
   const fetchIssuedCertificates = async () => {
     try {
@@ -110,20 +127,54 @@ const IssueCertificate = () => {
         throw new Error("Invalid Ethereum address");
       }
 
+      let blockchainCertId = null;
+      
+      // Issue certificate on blockchain if wallet is connected
+      if (isWalletConnected) {
+        // Use IPFS hash or generate a placeholder
+        setipfsHash("QmdoZpyt6tTnZspoBau1pnvvMM8BzVqrytv8vkJPv14eQ7");
+
+        console.log("IPFS hash:", ipfsHash, formData.title, formData.recipient_address);
+        const blockchainResult = await blockchainService.issueCertificate(
+          formData.title, 
+          formData.recipient_address, 
+          ipfsHash
+        );
+        console.log("Blockchain result:", blockchainResult);
+        if (blockchainResult) {
+          blockchainCertId = blockchainResult.certId;
+          await blockchainResult.tx.wait();
+          toast.success("Certificate issued on blockchain");
+        }
+      }
+      
+      const data = await supabase
+      .from('profiles')
+      .select('wallet_address')
+      .eq('id', user?.id)
+      .maybeSingle();
+      
+      // Save to Supabase
       const { error } = await supabase
         .from("certificates")
         .insert([
           {
             ...formData,
-            issuer_id: user?.id,
-            status: "public",
+            issuer_id: data.data.wallet_address ,
+            status: "issued",
+            blockchain_cert_id: blockchainCertId,
+            metadata_uri: ipfsHash,
           },
         ]);
 
       if (error) throw error;
 
       toast.success("Certificate issued successfully!");
-      setFormData({ title: "", recipient_address: "", description: "" });
+      setFormData({ 
+        title: "", 
+        description: "", 
+        recipient_address: "" 
+      });
       navigate("/dashboard");
     } catch (error) {
       console.error("Error issuing certificate:", error);
@@ -165,10 +216,28 @@ const IssueCertificate = () => {
             </div>
             <h1 className="text-3xl font-bold">Issue New Certificate</h1>
             <p className="text-gray-500 mt-2">
-              Create a new NFT certificate for a recipient
+              Create a new certificate for a recipient
             </p>
           </motion.div>
         </div>
+
+        {!isWalletConnected && (
+          <Alert className="bg-yellow-50 border-yellow-200">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <AlertTitle>Blockchain Integration Available</AlertTitle>
+            <AlertDescription>
+              Connect your wallet to issue certificates on the blockchain for enhanced security and verification.
+              <Button 
+                onClick={connectWallet} 
+                variant="outline" 
+                size="sm" 
+                className="mt-2 border-yellow-400 text-yellow-700 hover:bg-yellow-100"
+              >
+                Connect Wallet
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -309,7 +378,7 @@ const IssueCertificate = () => {
         <div className="grid gap-6">
           {certificates.map((cert) => (
             <Card
-              key={cert.id}
+              key={cert.blockchain_cert_id}
               className="p-6 hover:shadow-lg transition-shadow cursor-pointer"
               onClick={() => viewCertificate(cert.public_url)}
             >

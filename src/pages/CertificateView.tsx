@@ -3,14 +3,15 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Award, Calendar, Building, ExternalLink, Lock, Loader2, ArrowLeft } from "lucide-react";
+import { Award, Calendar, Building, ExternalLink, Lock, Loader2, ArrowLeft,  Shield, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from '@/providers/AuthProvider';
 import { analyzeCertificateValue, generateShareableHighlights } from '@/utils/ai';
+import { blockchainService } from '@/utils/blockchain';
 
 interface Certificate {
-  id: string;
+  blockchain_cert_id: string;
   title: string;
   issuer_id: string;
   recipient_address: string;
@@ -40,6 +41,8 @@ const CertificateView = () => {
   const {user, isIssuer} = useAuth();
   const location = useLocation();
   const [cameFromProfile, setCameFromProfile] = useState(false);
+  const [verifyingOnBlockchain, setVerifyingOnBlockchain] = useState(false);
+  const [blockchainVerified, setBlockchainVerified] = useState<boolean | null>(null);
 
   useEffect(() => {
     const referrer = document.referrer;
@@ -52,7 +55,7 @@ const CertificateView = () => {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !publicUrl?.includes('-public')) {
       toast.info("Please log in to view certificate details");
       // Store the intended redirect URL in session storage
       sessionStorage.setItem('redirectAfterLogin', `/certificates/${publicUrl}`);
@@ -84,6 +87,11 @@ const CertificateView = () => {
 
       setCertificate(data);
 
+      // Verify on blockchain if certificate has blockchain_cert_id
+      if (data.blockchain_cert_id) {
+        verifyOnBlockchain(data.blockchain_cert_id);
+      }
+
       // Only load AI insights if user is authenticated
       if (user) {
         // Load AI insights
@@ -106,6 +114,19 @@ const CertificateView = () => {
       toast.error('Failed to load certificate');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const verifyOnBlockchain = async (certId: string) => {
+    setVerifyingOnBlockchain(true);
+    try {
+      const isValid = await blockchainService.verifyCertificate(certId);
+      setBlockchainVerified(isValid);
+    } catch (error) {
+      console.error('Error verifying on blockchain:', error);
+      setBlockchainVerified(false);
+    } finally {
+      setVerifyingOnBlockchain(false);
     }
   };
 
@@ -187,6 +208,28 @@ const CertificateView = () => {
             <p className="text-gray-600 max-w-2xl">{certificate.description}</p>
           </div>
 
+          {certificate.blockchain_cert_id && (
+              <div className="mt-4">
+                {verifyingOnBlockchain ? (
+                  <div className="flex items-center text-amber-600">
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verifying on blockchain...
+                  </div>
+                ) : blockchainVerified === true ? (
+                  <div className="flex items-center text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                    <Shield className="w-4 h-4 mr-2" />
+                    <Check className="w-3 h-3 mr-1" />
+                    Blockchain Verified
+                  </div>
+                ) : blockchainVerified === false ? (
+                  <div className="flex items-center text-red-600 bg-red-50 px-3 py-1 rounded-full">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Not verified on blockchain
+                  </div>
+                ) : null}
+              </div>
+            )}
+
           <div className="grid gap-6">
             <div className="flex items-center justify-center gap-4 text-gray-600">
               <Building className="w-5 h-5" />
@@ -201,6 +244,13 @@ const CertificateView = () => {
                 <p className="text-gray-600 break-all">
                   Recipient Address: {certificate.recipient_address}
                 </p>
+
+                {certificate.blockchain_cert_id && (
+                  <p className="text-gray-600 break-all mt-2">
+                    Blockchain Certificate ID: {certificate.blockchain_cert_id}
+                  </p>
+                )}
+                
               </div>
             </div>
 

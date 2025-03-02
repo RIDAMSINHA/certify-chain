@@ -1,6 +1,6 @@
 
 export interface Certificate {
-  id: string;
+  blockchain_cert_id: string;
   title: string;
   description: string;
   status: 'pending' | 'issued' | 'revoked';

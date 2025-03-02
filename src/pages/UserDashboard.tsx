@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { useNavigate } from 'react-router-dom';
 
 interface Certificate {
-  id: string;
+  blockchain_cert_id: string;
   title: string;
   issuer_id: string;
   status: string;
@@ -72,12 +72,12 @@ const Dashboard = () => {
       if (storedShowcase) {
         try {
           const parsed = JSON.parse(storedShowcase) as Certificate[];
-          showcaseIds = parsed.map(cert => cert.id);
+          showcaseIds = parsed.map(cert => cert.blockchain_cert_id);
         } catch (error) {
           console.error("Error parsing showcaseCertificates from localStorage", error);
         }
       }
-      const filteredData = sortedData.filter(cert => !showcaseIds.includes(cert.id));
+      const filteredData = sortedData.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
       setCertificates(filteredData);
     } catch (error) {
       console.error('Error fetching certificates:', error);
@@ -97,7 +97,7 @@ const Dashboard = () => {
       const { error } = await supabase
         .from('certificates')
         .update({ priority: newPriority })
-        .eq('id', id);
+        .eq('blockchain_cert_id', id);
       if (error) throw error;
       
       toast.success(newPriority === 1 ? 'Certificate pinned' : 'Certificate unpinned');
@@ -130,19 +130,19 @@ const Dashboard = () => {
     if (!draggedCert) return;
     
     // If certificate is not already in showcase, add it
-    if (!showcaseCertificates.find(c => c.id === draggedCert.id)) {
+    if (!showcaseCertificates.find(c => c.blockchain_cert_id === draggedCert.blockchain_cert_id)) {
       const newShowcase = [...showcaseCertificates, draggedCert];
       setShowcaseCertificates(newShowcase);
       localStorage.setItem("showcaseCertificates", JSON.stringify(newShowcase));
       toast.success('Certificate added to showcase');
       // Also remove from main certificates list
-      setCertificates(prev => prev.filter(cert => cert.id !== draggedCert.id));
+      setCertificates(prev => prev.filter(cert => cert.blockchain_cert_id !== draggedCert.blockchain_cert_id));
     }
     setDraggedCert(null);
   };
 
   const removeFromShowcase = (certId: string) => {
-    const newShowcase = showcaseCertificates.filter(c => c.id !== certId);
+    const newShowcase = showcaseCertificates.filter(c => c.blockchain_cert_id !== certId);
     setShowcaseCertificates(newShowcase);
     localStorage.setItem("showcaseCertificates", JSON.stringify(newShowcase));
     // Re-fetch main certificates (or add the removed cert manually)
@@ -206,7 +206,7 @@ const Dashboard = () => {
               <div className="grid gap-4">
                 {showcaseCertificates.map((cert, index) => (
                   <Card 
-                    key={cert.id} 
+                    key={cert.blockchain_cert_id} 
                     className="p-4 bg-gray-50 cursor-move"
                     draggable
                     onDragStart={() => handleDragStart(cert)}
@@ -214,7 +214,7 @@ const Dashboard = () => {
                     onDrop={(e) => {
                       e.preventDefault();
                       if (draggedCert) {
-                        const fromIndex = showcaseCertificates.findIndex(c => c.id === draggedCert.id);
+                        const fromIndex = showcaseCertificates.findIndex(c => c.blockchain_cert_id === draggedCert.blockchain_cert_id);
                         if (fromIndex !== -1) {
                           reorderShowcase(fromIndex, index);
                         }
@@ -233,7 +233,7 @@ const Dashboard = () => {
                       <Button 
                         variant="ghost" 
                         size="sm"
-                        onClick={() => removeFromShowcase(cert.id)}
+                        onClick={() => removeFromShowcase(cert.blockchain_cert_id)}
                         className="text-red-500 hover:text-red-700"
                       >
                         Remove
@@ -263,7 +263,7 @@ const Dashboard = () => {
         <div className="grid gap-6">
           {certificates.map((cert) => (
             <Card 
-              key={cert.id} 
+              key={cert.blockchain_cert_id} 
               className="p-6 hover:shadow-lg transition-shadow cursor-pointer"
               draggable
               onDragStart={() => handleDragStart(cert)}
@@ -288,7 +288,7 @@ const Dashboard = () => {
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      togglePriority(cert.id, cert.priority);
+                      togglePriority(cert.blockchain_cert_id, cert.priority);
                     }}
                     className={cert.priority === 1 ? "text-yellow-500" : ""}
                   >

@@ -13,7 +13,7 @@ export type Database = {
         Row: {
           created_at: string | null
           description: string | null
-          id: string
+          blockchain_cert_id: string
           issuer_id: string
           metadata_uri: string | null
           priority: number | null
@@ -21,12 +21,12 @@ export type Database = {
           recipient_address: string
           status: string | null
           title: string
-          token_id: number | null
+          token_id: string | null
         }
         Insert: {
           created_at?: string | null
           description?: string | null
-          id?: string
+          blockchain_cert_id?: string
           issuer_id: string
           metadata_uri?: string | null
           priority?: number | null
@@ -34,12 +34,12 @@ export type Database = {
           recipient_address: string
           status?: string | null
           title: string
-          token_id?: number | null
+          token_id?: string | null
         }
         Update: {
           created_at?: string | null
           description?: string | null
-          id?: string
+          blockchain_cert_id?: string
           issuer_id?: string
           metadata_uri?: string | null
           priority?: number | null
@@ -47,7 +47,7 @@ export type Database = {
           recipient_address?: string
           status?: string | null
           title?: string
-          token_id?: number | null
+          token_id?: string | null
         }
         Relationships: [
           {
