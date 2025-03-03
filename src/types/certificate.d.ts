@@ -9,4 +9,5 @@ export interface Certificate {
   recipient_address: string;
   issuer_id: string;
   metadata_uri: string;
+  public_url?: string;
 }
