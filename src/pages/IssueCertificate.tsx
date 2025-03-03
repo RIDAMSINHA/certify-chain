@@ -1,14 +1,23 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { FilePlus, ArrowRight, Wand2, Loader2, AlertCircle } from "lucide-react";
+import {
+  FilePlus,
+  ArrowRight,
+  Wand2,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Award, Calendar, ExternalLink, Eye, Building } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
-import { generateCertificateDescription, validateCertificateContent } from "@/utils/ai";
+import {
+  generateCertificateDescription,
+  validateCertificateContent,
+} from "@/utils/ai";
 import { blockchainService } from "@/utils/blockchain";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -32,6 +41,8 @@ const IssueCertificate = () => {
     title: "",
     description: "",
     recipient_address: "",
+    recipient_name: "",
+    ipfshash: "",
   });
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,9 +113,12 @@ const IssueCertificate = () => {
 
     setIsValidating(true);
     try {
-      const result = await validateCertificateContent(formData.title, formData.description);
+      const result = await validateCertificateContent(
+        formData.title,
+        formData.description
+      );
       setValidationResult(result);
-      
+
       if (result.isValid) {
         toast.success(`Certificate content validated (Score: ${result.score})`);
       } else {
@@ -128,17 +142,22 @@ const IssueCertificate = () => {
       }
 
       let blockchainCertId = null;
-      
+
       // Issue certificate on blockchain if wallet is connected
       if (isWalletConnected) {
         // Use IPFS hash or generate a placeholder
-        setipfsHash("QmdoZpyt6tTnZspoBau1pnvvMM8BzVqrytv8vkJPv14eQ7");
+        // setipfsHash("QmdoZpyt6tTnZspoBau1pnvvMM8BzVqrytv8vkJPv14eQ7");
 
-        console.log("IPFS hash:", ipfsHash, formData.title, formData.recipient_address);
+        console.log(
+          "IPFS hash:",
+          formData.ipfshash,
+          formData.recipient_name,
+          formData.recipient_address
+        );
         const blockchainResult = await blockchainService.issueCertificate(
-          formData.title, 
-          formData.recipient_address, 
-          ipfsHash
+          formData.recipient_name,
+          formData.recipient_address,
+          formData.ipfshash
         );
         console.log("Blockchain result:", blockchainResult);
         if (blockchainResult) {
@@ -147,33 +166,33 @@ const IssueCertificate = () => {
           toast.success("Certificate issued on blockchain");
         }
       }
-      
+
       const data = await supabase
-      .from('profiles')
-      .select('wallet_address')
-      .eq('id', user?.id)
-      .maybeSingle();
-      
+        .from("profiles")
+        .select("wallet_address")
+        .eq("id", user?.id)
+        .maybeSingle();
+
       // Save to Supabase
-      const { error } = await supabase
-        .from("certificates")
-        .insert([
-          {
-            ...formData,
-            issuer_id: data.data.wallet_address ,
-            status: "issued",
-            blockchain_cert_id: blockchainCertId,
-            metadata_uri: ipfsHash,
-          },
-        ]);
+      const { error } = await supabase.from("certificates").insert([
+        {
+          ...formData,
+          issuer_id: data.data.wallet_address,
+          status: "issued",
+          blockchain_cert_id: blockchainCertId,
+          metadata_uri: ipfsHash,
+        },
+      ]);
 
       if (error) throw error;
 
       toast.success("Certificate issued successfully!");
-      setFormData({ 
-        title: "", 
-        description: "", 
-        recipient_address: "" 
+      setFormData({
+        title: "",
+        description: "",
+        recipient_address: "",
+        recipient_name: "",
+        ipfshash: "",
       });
       navigate("/dashboard");
     } catch (error) {
@@ -191,7 +210,7 @@ const IssueCertificate = () => {
   const shareUrl = (publicUrl: string) => {
     const shareableUrl = `${window.location.origin}/certificates/${publicUrl}`;
     navigator.clipboard.writeText(shareableUrl);
-    toast.success('Share link copied to clipboard');
+    toast.success("Share link copied to clipboard");
   };
 
   if (loading) {
@@ -226,11 +245,12 @@ const IssueCertificate = () => {
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Blockchain Integration Available</AlertTitle>
             <AlertDescription>
-              Connect your wallet to issue certificates on the blockchain for enhanced security and verification.
-              <Button 
-                onClick={connectWallet} 
-                variant="outline" 
-                size="sm" 
+              Connect your wallet to issue certificates on the blockchain for
+              enhanced security and verification. <br />
+              <Button
+                onClick={connectWallet}
+                variant="outline"
+                size="sm"
                 className="mt-2 border-yellow-400 text-yellow-700 hover:bg-yellow-100"
               >
                 Connect Wallet
@@ -256,7 +276,9 @@ const IssueCertificate = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="e.g., Web Development Certification"
                 value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
               />
             </div>
 
@@ -299,6 +321,42 @@ const IssueCertificate = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                IPFS Hash
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter IPFS hash"
+                value={formData.ipfshash}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    ipfshash: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Recipient Name (for Blockchain)
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter recipient's full name"
+                value={formData.recipient_name}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    recipient_name: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Recipient Wallet Address
               </label>
               <input
@@ -317,17 +375,23 @@ const IssueCertificate = () => {
             </div>
 
             {validationResult && (
-              <div className={`p-4 rounded-lg ${
-                validationResult.isValid ? "bg-green-50" : "bg-yellow-50"
-              }`}>
+              <div
+                className={`p-4 rounded-lg ${
+                  validationResult.isValid ? "bg-green-50" : "bg-yellow-50"
+                }`}
+              >
                 <h4 className="font-medium mb-2">AI Validation Results</h4>
-                <p className="text-sm mb-2">Score: {validationResult.score}/100</p>
+                <p className="text-sm mb-2">
+                  Score: {validationResult.score}/100
+                </p>
                 <p className="text-sm mb-2">{validationResult.feedback}</p>
                 {validationResult.suggestedImprovements.length > 0 && (
                   <ul className="text-sm list-disc list-inside">
-                    {validationResult.suggestedImprovements.map((improvement: string, index: number) => (
-                      <li key={index}>{improvement}</li>
-                    ))}
+                    {validationResult.suggestedImprovements.map(
+                      (improvement: string, index: number) => (
+                        <li key={index}>{improvement}</li>
+                      )
+                    )}
                   </ul>
                 )}
               </div>
@@ -338,7 +402,9 @@ const IssueCertificate = () => {
                 type="button"
                 variant="outline"
                 onClick={validateCertificate}
-                disabled={isValidating || !formData.title || !formData.description}
+                disabled={
+                  isValidating || !formData.title || !formData.description
+                }
                 className="flex-1"
               >
                 {isValidating ? (
@@ -384,14 +450,20 @@ const IssueCertificate = () => {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <Award className={`w-10 h-10 ${cert.priority === 1 ? 'text-yellow-500' : 'text-blue-500'}`} />
+                  <Award
+                    className={`w-10 h-10 ${
+                      cert.priority === 1 ? "text-yellow-500" : "text-blue-500"
+                    }`}
+                  />
                   <div>
                     <h2 className="text-xl font-semibold">{cert.title}</h2>
                     <div className="flex items-center gap-2 text-gray-600 mt-1">
                       <Building className="w-4 h-4" />
                       <span>Issued by: {cert.issuer_id}</span>
                       <Calendar className="w-4 h-4 ml-2" />
-                      <span>{new Date(cert.created_at).toLocaleDateString()}</span>
+                      <span>
+                        {new Date(cert.created_at).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -425,8 +497,12 @@ const IssueCertificate = () => {
           {certificates.length === 0 && (
             <div className="text-center py-12 bg-white rounded-lg">
               <Award className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-600">No Certificates Issued</h3>
-              <p className="text-gray-500 mt-2">Start issuing certificates to see them here</p>
+              <h3 className="text-xl font-semibold text-gray-600">
+                No Certificates Issued
+              </h3>
+              <p className="text-gray-500 mt-2">
+                Start issuing certificates to see them here
+              </p>
             </div>
           )}
         </div>
