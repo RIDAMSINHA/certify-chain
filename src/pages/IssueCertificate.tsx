@@ -405,7 +405,7 @@ const IssueCertificate = () => {
                 disabled={
                   isValidating || !formData.title || !formData.description
                 }
-                className="flex-1"
+                className="flex-1 flex items-center justify-center space-x-2 py-6 px-6 rounded-lg transition-colors disabled:opacity-50"
               >
                 {isValidating ? (
                   <>
