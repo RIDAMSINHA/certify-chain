@@ -50,7 +50,6 @@ const IssueCertificate = () => {
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [ipfsHash, setipfsHash] = useState<any>(null);
 
   useEffect(() => {
     checkWalletConnection();
@@ -145,9 +144,6 @@ const IssueCertificate = () => {
 
       // Issue certificate on blockchain if wallet is connected
       if (isWalletConnected) {
-        // Use IPFS hash or generate a placeholder
-        // setipfsHash("QmdoZpyt6tTnZspoBau1pnvvMM8BzVqrytv8vkJPv14eQ7");
-
         console.log(
           "IPFS hash:",
           formData.ipfshash,
@@ -176,11 +172,13 @@ const IssueCertificate = () => {
       // Save to Supabase
       const { error } = await supabase.from("certificates").insert([
         {
-          ...formData,
+          title: formData.title,
+          description: formData.description,
+          recipient_address: formData.recipient_address,
           issuer_id: data.data.wallet_address,
           status: "issued",
           blockchain_cert_id: blockchainCertId,
-          metadata_uri: ipfsHash,
+          metadata_uri: formData.ipfshash,
         },
       ]);
 
