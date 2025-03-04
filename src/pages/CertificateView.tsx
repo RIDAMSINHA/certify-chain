@@ -211,18 +211,18 @@ const CertificateView = () => {
           {certificate.blockchain_cert_id && (
               <div className="mt-4">
                 {verifyingOnBlockchain ? (
-                  <div className="flex items-center text-amber-600">
+                  <div className="flex items-center text-amber-600 p-10 justify-center m-5">
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Verifying on blockchain...
                   </div>
                 ) : blockchainVerified === true ? (
-                  <div className="flex items-center text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                  <div className="flex items-center text-green-600 bg-green-50 px-3 py-1 rounded-full m-5 p-10 justify-center">
                     <Shield className="w-4 h-4 mr-2" />
                     <Check className="w-3 h-3 mr-1" />
                     Blockchain Verified
                   </div>
                 ) : blockchainVerified === false ? (
-                  <div className="flex items-center text-red-600 bg-red-50 px-3 py-1 rounded-full">
+                  <div className="flex items-center text-red-600 bg-red-50 px-3 py-1 rounded-full p-10 justify-center m-5">
                     <Shield className="w-4 h-4 mr-2" />
                     Not verified on blockchain
                   </div>
