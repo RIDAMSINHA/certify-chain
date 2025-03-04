@@ -7,6 +7,7 @@ import {
   Wand2,
   Loader2,
   AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,24 +51,67 @@ const IssueCertificate = () => {
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [currentAccount, setCurrentAccount] = useState<string | null>(null);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
 
   useEffect(() => {
     checkWalletConnection();
     fetchIssuedCertificates();
+
+    // Listen for account changes in MetaMask
+    if (window.ethereum) {
+      window.ethereum.on("accountsChanged", (accounts) => {
+        if (accounts.length > 0) {
+          setCurrentAccount(accounts[0]);
+          setIsWalletConnected(true);
+          toast.success("Wallet account changed");
+        } else {
+          setCurrentAccount(null);
+          setIsWalletConnected(false);
+          toast.error("Wallet disconnected");
+        }
+      });
+    }
   }, []);
 
   const checkWalletConnection = async () => {
-    setIsWalletConnected(blockchainService.isConnected());
-  };
-
-  const connectWallet = async () => {
-    const address = await blockchainService.connectWallet();
-    if (address) {
-      setIsWalletConnected(true);
-      toast.success("Wallet connected successfully");
+    const isConnected = blockchainService.isConnected();
+    setIsWalletConnected(isConnected);
+    
+    if (isConnected) {
+      const account = blockchainService.getCurrentAccount();
+      setCurrentAccount(account);
     }
   };
 
+  const connectWallet = async () => {
+    try {
+      const address = await blockchainService.connectWallet();
+      if (address) {
+        setIsWalletConnected(true);
+        setCurrentAccount(address);
+        toast.success("Wallet connected successfully");
+      }
+    } catch (error) {
+      toast.error("Failed to connect wallet");
+    }
+  };
+
+  const switchAccount = async () => {
+    setIsSwitchingAccount(true);
+    try {
+      const newAccount = await blockchainService.switchAccount();
+      if (newAccount) {
+        setCurrentAccount(newAccount);
+      }
+    } catch (error) {
+      console.error("Error switching accounts:", error);
+      toast.error("Failed to switch account");
+    } finally {
+      setIsSwitchingAccount(false);
+    }
+  };
+  
   const fetchIssuedCertificates = async () => {
     try {
       const { data, error } = await supabase
@@ -238,7 +282,8 @@ const IssueCertificate = () => {
           </motion.div>
         </div>
 
-        {!isWalletConnected && (
+        {/* Wallet connection alert */}
+        {!isWalletConnected ? (
           <Alert className="bg-yellow-50 border-yellow-200">
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Blockchain Integration Available</AlertTitle>
@@ -254,6 +299,36 @@ const IssueCertificate = () => {
                 Connect Wallet
               </Button>
             </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert className="bg-green-50 border-green-200">
+            <div className="flex justify-between items-center w-full">
+              <div>
+                <AlertTitle className="text-green-700">Wallet Connected</AlertTitle>
+                <AlertDescription className="text-green-600">
+                  Current account: {blockchainService.shortenAddress(currentAccount || '')}
+                </AlertDescription>
+              </div>
+              <Button
+                onClick={switchAccount}
+                variant="outline"
+                size="sm"
+                className="border-green-400 text-green-700 hover:bg-green-100"
+                disabled={isSwitchingAccount}
+              >
+                {isSwitchingAccount ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Switching...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Switch Account
+                  </>
+                )}
+              </Button>
+            </div>
           </Alert>
         )}
 

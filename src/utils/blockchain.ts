@@ -16,7 +16,8 @@ export class BlockchainService {
   private provider: ethers.BrowserProvider | null = null;
   private contract: ethers.Contract | null = null;
   private signer: ethers.Signer | null = null;
-  
+  private currentAccount: string | null = null;
+
   constructor() {
     this.initialize();
   }
@@ -26,9 +27,16 @@ export class BlockchainService {
       try {
         this.provider = new ethers.BrowserProvider(window.ethereum);
         this.signer = await this.provider.getSigner();
+        this.currentAccount = await this.signer.getAddress();
         this.contract = new ethers.Contract(CONTRACT_ADDRESS, certificateRegistryABI, this.signer);
         console.log('Contract initialized:', this.contract);
         console.log('Blockchain service initialized successfully');
+
+        // Listen for account changes
+        window.ethereum.on('accountsChanged', (accounts: string[]) => {
+          console.log('Account changed to:', accounts[0]);
+          this.handleAccountChange(accounts[0]);
+        });
       } catch (error) {
         console.error('Failed to initialize blockchain service:', error);
       }
@@ -37,6 +45,60 @@ export class BlockchainService {
     }
   }
 
+  // Handle account changes from MetaMask
+  private async handleAccountChange(newAccount: string) {
+    try {
+      this.currentAccount = newAccount;
+      // Re-initialize with the new account
+      if (this.provider) {
+        this.signer = await this.provider.getSigner();
+        this.contract = new ethers.Contract(CONTRACT_ADDRESS, certificateRegistryABI, this.signer);
+        toast.info(`Switched to account: ${this.shortenAddress(newAccount)}`);
+      }
+    } catch (error) {
+      console.error('Error handling account change:', error);
+    }
+  }
+
+  // Switch MetaMask account
+  async switchAccount(): Promise<string | null> {
+    if (!window.ethereum) {
+      toast.error('MetaMask is not installed');
+      return null;
+    }
+
+    try {
+      // This will prompt the user to select an account in MetaMask
+      await window.ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
+      });
+      
+      // Get the selected account
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0 && accounts[0] !== this.currentAccount) {
+        this.handleAccountChange(accounts[0]);
+        return accounts[0];
+      }
+      
+      return this.currentAccount;
+    } catch (error) {
+      console.error('Error switching account:', error);
+      toast.error('Failed to switch account');
+      return null;
+    }
+  }
+
+  // Get current connected account
+  getCurrentAccount(): string | null {
+    return this.currentAccount;
+  }
+
+  // Shorten address for display
+  shortenAddress(address: string): string {
+    return address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : '';
+  }
+  
   async issueCertificate(name: string, recipientAddress: string, ipfsHash: string): Promise<{ certId: string, tx: ethers.TransactionResponse } | null> {
     if (!this.contract || !this.signer) {
       await this.initialize();
