@@ -290,7 +290,7 @@ const CertificateView = () => {
               <Award className="w-16 h-16 text-blue-500" />
             </div>
             <h1 className="text-3xl font-bold mb-2 text-gray-800">{certificate.title}</h1>
-            <p className="text-gray-600 max-w-2xl">{certificate.description}</p>
+            {/* <p className="text-gray-600 max-w-2xl">{certificate.description}</p> */}
           </div>
 
           {/* Tab Navigation */}
