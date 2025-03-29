@@ -2,21 +2,31 @@ import { ethers } from 'ethers';
 import { toast } from 'sonner';
 
 // Import the generated artifact that contains the ABI
-import certificateRegistryArtifact from '../../artifacts/src/contracts/CertificateRegistry.sol/CertificateRegistry.json';
+import certifyChainArtifact from '../../artifacts/src/contracts/CertifyChain.sol/CertifyChain.json';
 // Import the deployed contract configuration
 import contractConfig from '../contract-config.json';
 
-// Smart contract ABI for the CertificateRegistry
+// Smart contract ABI for the CertifyChain
 const CONTRACT_ADDRESS = contractConfig.contractAddress;
-const certificateRegistryABI = certificateRegistryArtifact.abi;
+const certifyChainABI = certifyChainArtifact.abi;
 console.log('Contract address:', CONTRACT_ADDRESS);
-console.log('ABI:', certificateRegistryABI);
+console.log('ABI:', certifyChainABI);
+
+export interface Certificate {
+  name: string;
+  issuer: string;
+  recipient: string;
+  ipfsHash: string;
+  issueDate: number;
+  isValid: boolean;
+}
 
 export class BlockchainService {
   private provider: ethers.BrowserProvider | null = null;
   private contract: ethers.Contract | null = null;
   private signer: ethers.Signer | null = null;
   private currentAccount: string | null = null;
+  private userInfo: { name: string; isHR: boolean; isRegistered: boolean } | null = null;
 
   constructor() {
     this.initialize();
@@ -28,9 +38,12 @@ export class BlockchainService {
         this.provider = new ethers.BrowserProvider(window.ethereum);
         this.signer = await this.provider.getSigner();
         this.currentAccount = await this.signer.getAddress();
-        this.contract = new ethers.Contract(CONTRACT_ADDRESS, certificateRegistryABI, this.signer);
+        this.contract = new ethers.Contract(CONTRACT_ADDRESS, certifyChainABI, this.signer);
         console.log('Contract initialized:', this.contract);
         console.log('Blockchain service initialized successfully');
+
+        // Fetch user info if available
+        await this.fetchUserInfo();
 
         // Listen for account changes
         window.ethereum.on('accountsChanged', (accounts: string[]) => {
@@ -45,6 +58,25 @@ export class BlockchainService {
     }
   }
 
+  // Fetch user information from the contract
+  private async fetchUserInfo() {
+    if (!this.contract || !this.currentAccount) return;
+    
+    try {
+      const userInfo = await this.contract.users(this.currentAccount);
+      if (userInfo) {
+        this.userInfo = {
+          name: userInfo.name,
+          isHR: userInfo.isHR,
+          isRegistered: userInfo.isRegistered
+        };
+        console.log('User info:', this.userInfo);
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  }
+
   // Handle account changes from MetaMask
   private async handleAccountChange(newAccount: string) {
     try {
@@ -52,8 +84,11 @@ export class BlockchainService {
       // Re-initialize with the new account
       if (this.provider) {
         this.signer = await this.provider.getSigner();
-        this.contract = new ethers.Contract(CONTRACT_ADDRESS, certificateRegistryABI, this.signer);
+        this.contract = new ethers.Contract(CONTRACT_ADDRESS, certifyChainABI, this.signer);
         toast.info(`Switched to account: ${this.shortenAddress(newAccount)}`);
+        
+        // Update user info for the new account
+        await this.fetchUserInfo();
       }
     } catch (error) {
       console.error('Error handling account change:', error);
@@ -98,7 +133,49 @@ export class BlockchainService {
   shortenAddress(address: string): string {
     return address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : '';
   }
+
+  // Sign up user (new method for CertifyChain)
+  async signup(name: string, isHR: boolean): Promise<boolean> {
+    if (!this.contract || !this.signer) {
+      await this.initialize();
+      if (!this.contract || !this.signer) {
+        toast.error('Blockchain connection not available');
+        return false;
+      }
+    }
+
+    try {
+      const tx = await this.contract.signup(name, isHR);
+      await tx.wait();
+      
+      // Update user info after signup
+      await this.fetchUserInfo();
+      
+      toast.success('Registration successful');
+      return true;
+    } catch (error: any) {
+      console.error('Error signing up:', error);
+      toast.error(`Signup error: ${error.message || 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  // Check if user is registered
+  isUserRegistered(): boolean {
+    return this.userInfo?.isRegistered || false;
+  }
+
+  // Check if user is HR
+  isUserHR(): boolean {
+    return this.userInfo?.isHR || false;
+  }
+
+  // Get user name
+  getUserName(): string {
+    return this.userInfo?.name || '';
+  }
   
+  // Issue certificate method (updated for CertifyChain)
   async issueCertificate(name: string, recipientAddress: string, ipfsHash: string): Promise<{ certId: string, tx: ethers.TransactionResponse } | null> {
     if (!this.contract || !this.signer) {
       await this.initialize();
@@ -108,20 +185,28 @@ export class BlockchainService {
       }
     }
 
+    // Check if the user is registered and is HR
+    if (!this.isUserRegistered()) {
+      toast.error('You need to register first');
+      return null;
+    }
+
+    if (!this.isUserHR()) {
+      toast.error('Only HR users can issue certificates');
+      return null;
+    }
+
     try {
       // Issue the certificate on the blockchain
-      const tx = await this.contract.issueCertificate(name, recipientAddress, ipfsHash);
-      console.log('Transaction sent:', name, recipientAddress, ipfsHash);
+      const tx = await this.contract.issueCertificate(recipientAddress, name, ipfsHash);
+      console.log('Transaction sent:', recipientAddress, name, ipfsHash);
       
       // Wait for the transaction to be mined and get the receipt
       const receipt = await tx.wait();
       console.log('Transaction receipt events:', receipt);
 
       // Extract the CertificateIssued event from the receipt
-      // const event = receipt.events?.find((e: any) => e.fragment && e.fragment.name === "CertificateIssued");
-      
-      // If not found, you could optionally decode logs manually:
-      const iface = new ethers.Interface(certificateRegistryABI);
+      const iface = new ethers.Interface(certifyChainABI);
       const event = receipt.logs.map((log: any) => {
         try {
           return iface.parseLog(log);
@@ -133,6 +218,7 @@ export class BlockchainService {
       if (!event || !event.args || !event.args.certId) {
         throw new Error("CertificateIssued event not found in transaction receipt");
       }
+      
       const certId = event.args.certId;
       
       return { certId, tx };
@@ -143,6 +229,7 @@ export class BlockchainService {
     }
   }
 
+  // Verify certificate method (updated for CertifyChain)
   async verifyCertificate(certId: string): Promise<boolean> {
     if (!this.contract) {
       await this.initialize();
@@ -152,11 +239,94 @@ export class BlockchainService {
       }
     }
 
+    // Check if user is registered
+    if (!this.isUserRegistered()) {
+      toast.error('You need to register first to verify certificates');
+      return false;
+    }
+
     try {
-      const isValid = await this.contract.verifyCertificate(certId);
-      return isValid;
+      // Format certId if needed
+      if (!certId.startsWith('0x')) {
+        certId = '0x' + certId;
+      }
+      
+      // Call the contract's verifyCertificate method
+      const result = await this.contract.verifyCertificate(certId);
+      
+      // The new contract returns a string instead of a boolean
+      return result.includes("valid");
     } catch (error) {
       console.error('Error verifying certificate on blockchain:', error);
+      return false;
+    }
+  }
+
+  // Get user certificates (new method for CertifyChain)
+  async getUserCertificates(): Promise<Certificate[]> {
+    if (!this.contract) {
+      await this.initialize();
+      if (!this.contract) {
+        toast.error('Blockchain connection not available');
+        return [];
+      }
+    }
+
+    // Check if user is registered
+    if (!this.isUserRegistered()) {
+      toast.error('You need to register first to view certificates');
+      return [];
+    }
+
+    try {
+      const result = await this.contract.getUserCertificates();
+      const certificates = result[0];
+      
+      return certificates.map((cert: any) => ({
+        name: cert.name,
+        issuer: cert.issuer,
+        recipient: cert.recipient,
+        ipfsHash: cert.ipfsHash,
+        issueDate: Number(cert.issueDate),
+        isValid: cert.isValid
+      }));
+    } catch (error) {
+      console.error('Error getting user certificates:', error);
+      toast.error('Failed to fetch certificates');
+      return [];
+    }
+  }
+
+  // Revoke certificate (new method for CertifyChain)
+  async revokeCertificate(certId: string): Promise<boolean> {
+    if (!this.contract) {
+      await this.initialize();
+      if (!this.contract) {
+        toast.error('Blockchain connection not available');
+        return false;
+      }
+    }
+
+    // Check if user is HR
+    if (!this.isUserHR()) {
+      toast.error('Only HR users can revoke certificates');
+      return false;
+    }
+
+    try {
+      // Format certId if needed
+      if (!certId.startsWith('0x')) {
+        certId = '0x' + certId;
+      }
+      
+      const tx = await this.contract.revokeCertificate(certId);
+      await tx.wait();
+      
+      toast.success('Certificate revoked successfully');
+      return true;
+    } catch (error: any) {
+      console.error('Error revoking certificate:', error);
+      toast.error(`Revocation error: ${error.message || 'Unknown error'}`);
       return false;
     }
   }

@@ -53,6 +53,14 @@ const IssueCertificate = () => {
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<string | null>(null);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
+  const [isUserRegistered, setIsUserRegistered] = useState(false);
+  const [isUserHR, setIsUserHR] = useState(false);
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  const [registrationData, setRegistrationData] = useState({
+    name: "",
+    isHR: false,
+  });
+  const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
     checkWalletConnection();
@@ -64,15 +72,30 @@ const IssueCertificate = () => {
         if (accounts.length > 0) {
           setCurrentAccount(accounts[0]);
           setIsWalletConnected(true);
+          checkUserStatus();
           toast.success("Wallet account changed");
         } else {
           setCurrentAccount(null);
           setIsWalletConnected(false);
+          setIsUserRegistered(false);
+          setIsUserHR(false);
           toast.error("Wallet disconnected");
         }
       });
     }
   }, []);
+
+  const checkUserStatus = () => {
+    const isRegistered = blockchainService.isUserRegistered();
+    const isHR = blockchainService.isUserHR();
+    
+    setIsUserRegistered(isRegistered);
+    setIsUserHR(isHR);
+    
+    if (isRegistered && !isHR) {
+      toast.warning("Your account is registered but does not have HR privileges");
+    }
+  };
 
   const checkWalletConnection = async () => {
     const isConnected = blockchainService.isConnected();
@@ -81,6 +104,7 @@ const IssueCertificate = () => {
     if (isConnected) {
       const account = blockchainService.getCurrentAccount();
       setCurrentAccount(account);
+      checkUserStatus();
     }
   };
 
@@ -90,6 +114,7 @@ const IssueCertificate = () => {
       if (address) {
         setIsWalletConnected(true);
         setCurrentAccount(address);
+        checkUserStatus();
         toast.success("Wallet connected successfully");
       }
     } catch (error) {
@@ -103,12 +128,37 @@ const IssueCertificate = () => {
       const newAccount = await blockchainService.switchAccount();
       if (newAccount) {
         setCurrentAccount(newAccount);
+        checkUserStatus();
       }
     } catch (error) {
       console.error("Error switching accounts:", error);
       toast.error("Failed to switch account");
     } finally {
       setIsSwitchingAccount(false);
+    }
+  };
+
+  const handleRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsRegistering(true);
+    
+    try {
+      const success = await blockchainService.signup(
+        registrationData.name,
+        registrationData.isHR
+      );
+      
+      if (success) {
+        setIsUserRegistered(true);
+        setIsUserHR(registrationData.isHR);
+        setShowRegistrationForm(false);
+        toast.success("Registration successful!");
+      }
+    } catch (error) {
+      console.error("Error registering user:", error);
+      toast.error("Failed to register user");
+    } finally {
+      setIsRegistering(false);
     }
   };
   
@@ -188,6 +238,15 @@ const IssueCertificate = () => {
 
       // Issue certificate on blockchain if wallet is connected
       if (isWalletConnected) {
+        // Check if user is registered and has HR privileges
+        if (!isUserRegistered) {
+          throw new Error("You need to register first to issue certificates");
+        }
+        
+        if (!isUserHR) {
+          throw new Error("Only HR users can issue certificates");
+        }
+        
         console.log(
           "IPFS hash:",
           formData.ipfshash,
@@ -300,6 +359,31 @@ const IssueCertificate = () => {
               </Button>
             </AlertDescription>
           </Alert>
+        ) : isWalletConnected && !isUserRegistered ? (
+          <Alert className="bg-yellow-50 border-yellow-200">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <AlertTitle>Registration Required</AlertTitle>
+            <AlertDescription>
+              You need to register before issuing certificates on the blockchain.
+              <br />
+              <Button
+                onClick={() => setShowRegistrationForm(true)}
+                variant="outline"
+                size="sm"
+                className="mt-2 border-yellow-400 text-yellow-700 hover:bg-yellow-100"
+              >
+                Register Now
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : isWalletConnected && isUserRegistered && !isUserHR ? (
+          <Alert className="bg-red-50 border-red-200">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertTitle>HR Privileges Required</AlertTitle>
+            <AlertDescription>
+              Only HR users can issue certificates. Your account is registered but does not have HR privileges.
+            </AlertDescription>
+          </Alert>
         ) : (
           <Alert className="bg-green-50 border-green-200">
             <div className="flex justify-between items-center w-full">
@@ -307,6 +391,11 @@ const IssueCertificate = () => {
                 <AlertTitle className="text-green-700">Wallet Connected</AlertTitle>
                 <AlertDescription className="text-green-600">
                   Current account: {blockchainService.shortenAddress(currentAccount || '')}
+                  {isUserRegistered && (
+                    <span className="ml-2">
+                      (Registered as {isUserHR ? "HR" : "Regular User"})
+                    </span>
+                  )}
                 </AlertDescription>
               </div>
               <Button
@@ -330,6 +419,74 @@ const IssueCertificate = () => {
               </Button>
             </div>
           </Alert>
+        )}
+
+        {/* Registration Form */}
+        {showRegistrationForm && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl shadow-sm p-6 border border-gray-100"
+          >
+            <h2 className="text-xl font-semibold mb-4">Register Your Account</h2>
+            <form onSubmit={handleRegistration} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Your Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter your full name"
+                  value={registrationData.name}
+                  onChange={(e) =>
+                    setRegistrationData({ ...registrationData, name: e.target.value })
+                  }
+                />
+              </div>
+              
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isHR"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  checked={registrationData.isHR}
+                  onChange={(e) =>
+                    setRegistrationData({ ...registrationData, isHR: e.target.checked })
+                  }
+                />
+                <label htmlFor="isHR" className="ml-2 block text-sm text-gray-700">
+                  Register as HR (required to issue certificates)
+                </label>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mr-2"
+                  onClick={() => setShowRegistrationForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isRegistering || !registrationData.name}
+                >
+                  {isRegistering ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    "Register"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </motion.div>
         )}
 
         <motion.div

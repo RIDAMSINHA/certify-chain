@@ -178,11 +178,34 @@ const CertificateView = () => {
   const verifyOnBlockchain = async (certId: string) => {
     setVerifyingOnBlockchain(true);
     try {
+      // Check if user is registered
+      const isRegistered = blockchainService.isUserRegistered();
+      
+      if (!isRegistered) {
+        // If not registered, show registration modal
+        toast.warning("You need to register on the blockchain to verify certificates");
+        setBlockchainVerified(false);
+        // Could add a registration modal here similar to the VerifyBlockchainCertificate component
+        return;
+      }
+      
+      // Format the certificate ID if needed
+      if (!certId.startsWith('0x')) {
+        certId = '0x' + certId;
+      }
+      
       const isValid = await blockchainService.verifyCertificate(certId);
       setBlockchainVerified(isValid);
+      
+      if (isValid) {
+        toast.success("Certificate successfully verified on blockchain");
+      } else {
+        toast.warning("Certificate validation failed on blockchain");
+      }
     } catch (error) {
       console.error('Error verifying on blockchain:', error);
       setBlockchainVerified(false);
+      toast.error("Error verifying certificate on blockchain");
     } finally {
       setVerifyingOnBlockchain(false);
     }
