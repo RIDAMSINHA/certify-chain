@@ -1,16 +1,32 @@
 import { ethers } from 'ethers';
 import { toast } from 'sonner';
 
-// Import the generated artifact that contains the ABI
-import certifyChainArtifact from '../../artifacts/src/contracts/CertifyChain.sol/CertifyChain.json';
 // Import the deployed contract configuration
 import contractConfig from '../contract-config.json';
 
+// Define CertifyChain ABI manually instead of importing from artifacts
+const certifyChainABI = [
+  // User registration
+  "function signup(string memory _name, bool _isHR) external returns (string memory)",
+  "function users(address) external view returns (string name, bool isHR, bool isRegistered)",
+  
+  // Certificate management
+  "function issueCertificate(address _recipient, string memory _name, string memory _ipfsHash) external returns (string memory)",
+  "function verifyCertificate(bytes32 certId) external view returns (string memory)",
+  "function getUserCertificates() external view returns (tuple(string name, address issuer, address recipient, string ipfsHash, uint256 issueDate, bool isValid)[] memory, string memory)",
+  "function revokeCertificate(bytes32 certId) external returns (string memory)",
+  "function certificates(bytes32) external view returns (string name, address issuer, address recipient, string ipfsHash, uint256 issueDate, bool isValid)",
+  
+  // Events
+  "event UserRegistered(address user, string name, bool isHR)",
+  "event CertificateIssued(address indexed issuer, address indexed recipient, bytes32 certId, string name)",
+  "event CertificateRevoked(bytes32 certId)"
+];
+
 // Smart contract ABI for the CertifyChain
 const CONTRACT_ADDRESS = contractConfig.contractAddress;
-const certifyChainABI = certifyChainArtifact.abi;
 console.log('Contract address:', CONTRACT_ADDRESS);
-console.log('ABI:', certifyChainABI);
+console.log('Using manually defined ABI for CertifyChain');
 
 export interface Certificate {
   name: string;
@@ -263,7 +279,7 @@ export class BlockchainService {
   }
 
   // Get user certificates (new method for CertifyChain)
-  async getUserCertificates(): Promise<Certificate[]> {
+  async getUserCertificates(): Promise<{certId: string, ipfsHash: string, recipient: string, name: string}[]> {
     if (!this.contract) {
       await this.initialize();
       if (!this.contract) {
@@ -282,13 +298,16 @@ export class BlockchainService {
       const result = await this.contract.getUserCertificates();
       const certificates = result[0];
       
+      // Return certificate IDs, IPFS hashes, and recipient addresses
       return certificates.map((cert: any) => ({
-        name: cert.name,
-        issuer: cert.issuer,
-        recipient: cert.recipient,
+        certId: ethers.keccak256(
+          ethers.toUtf8Bytes(
+            `${cert.name}-${cert.recipient}-${cert.ipfsHash}-${cert.issueDate}`
+          )
+        ),
         ipfsHash: cert.ipfsHash,
-        issueDate: Number(cert.issueDate),
-        isValid: cert.isValid
+        recipient: cert.recipient,
+        name: cert.name
       }));
     } catch (error) {
       console.error('Error getting user certificates:', error);
