@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { ethers } from 'ethers';
 import { 
@@ -11,7 +11,8 @@ import {
   Plus,
   GripVertical,
   Eye,
-  Loader
+  Loader,
+  RefreshCw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,9 @@ const Dashboard = () => {
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const [isRefetching, setIsRefetching] = useState(false);
+  const isFetchingRef = useRef(false);
   const navigate = useNavigate();
 
   // On mount, load showcase certificates from localStorage and check wallet connection
@@ -106,8 +110,17 @@ const Dashboard = () => {
   };
 
   // Fetch certificates from blockchain
-  const fetchCertificatesFromBlockchain = async () => {
-    setLoading(true);
+  const fetchCertificatesFromBlockchain = async (isBackgroundRefetch = false) => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    isFetchingRef.current = true;
+    if (!isBackgroundRefetch) {
+      setLoading(true);
+    } else {
+      setIsRefetching(true);
+    }
+    
     try {
       // Get certificate identifiers from blockchain
       const blockchainCertIds = await blockchainService.getUserCertificates();
@@ -115,7 +128,7 @@ const Dashboard = () => {
       
       if (blockchainCertIds.length === 0) {
         setCertificates([]);
-        setLoading(false);
+        setLastFetchTime(Date.now());
         return;
       }
       
@@ -166,6 +179,7 @@ const Dashboard = () => {
         const filteredCerts = sortedCerts.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
         
         setCertificates(filteredCerts);
+        setLastFetchTime(Date.now());
         return;
       }
       
@@ -199,11 +213,19 @@ const Dashboard = () => {
       const filteredCerts = sortedCerts.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
       
       setCertificates(filteredCerts);
+      setLastFetchTime(Date.now());
     } catch (error) {
       console.error('Error fetching certificates from blockchain:', error);
-      toast.error('Failed to load certificates from blockchain');
+      if (!isBackgroundRefetch) {
+        toast.error('Failed to load certificates from blockchain');
+      }
     } finally {
-      setLoading(false);
+      isFetchingRef.current = false;
+      if (!isBackgroundRefetch) {
+        setLoading(false);
+      } else {
+        setIsRefetching(false);
+      }
     }
   };
 
@@ -250,14 +272,28 @@ const Dashboard = () => {
   };
 
   const removeFromShowcase = (certId: string) => {
+    const removedCert = showcaseCertificates.find(c => c.blockchain_cert_id === certId);
     const newShowcase = showcaseCertificates.filter(c => c.blockchain_cert_id !== certId);
     setShowcaseCertificates(newShowcase);
     localStorage.setItem("showcaseCertificates", JSON.stringify(newShowcase));
-    // Re-fetch certificates to add the removed one back to the main list
-    if (isRegistered) {
+    
+    // If we have the removed certificate, add it directly to the certificates list
+    if (removedCert) {
+      setCertificates(prev => {
+        // Sort the new list with the added certificate
+        const newCerts = [...prev, removedCert].sort((a, b) => {
+          return sortOrder === 'desc'
+            ? new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+        return newCerts;
+      });
+      toast.success('Certificate removed from showcase');
+    } else {
+      // If we couldn't find the certificate locally, refetch from blockchain
       fetchCertificatesFromBlockchain();
+      toast.success('Certificate removed from showcase, refreshing certificates...');
     }
-    toast.success('Certificate removed from showcase');
   };
 
   const reorderShowcase = (fromIndex: number, toIndex: number) => {
@@ -414,6 +450,12 @@ const Dashboard = () => {
             <span className="ml-3 text-sm bg-blue-100 text-blue-800 py-1 px-2 rounded-full">
               {certificates.length}
             </span>
+            {isRefetching && (
+              <span className="ml-2 text-xs text-gray-500">
+                <Loader className="inline-block w-3 h-3 animate-spin mr-1" />
+                Refreshing...
+              </span>
+            )}
           </h2>
           
           <div className="flex items-center gap-2">
@@ -424,6 +466,16 @@ const Dashboard = () => {
             >
               <ArrowUpDown className="w-4 h-4" />
               {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fetchCertificatesFromBlockchain()}
+              disabled={loading || isRefetching}
+              className="gap-1"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
           </div>
         </div>
