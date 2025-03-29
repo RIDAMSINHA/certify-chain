@@ -146,11 +146,11 @@ export const analyzeCertificateValue = async (
     
     Return a JSON object with:
     {
-      "industryDemand": string,
-      "careerOpportunities": string[],
-      "salaryImpact": string,
-      "futureRelevance": string,
-      "relatedCertifications": string[]
+      "industryDemand": string (keep concise, 1-2 sentences),
+      "careerOpportunities": string[] (3 short bullet points max),
+      "salaryImpact": string (keep concise, 1 sentence),
+      "futureRelevance": string (keep concise, 1-2 sentences),
+      "relatedCertifications": string[] (2 items max)
     }`;
 
   try {
@@ -188,6 +188,52 @@ export const analyzeCertificateValue = async (
       salaryImpact: "May enhance compensation packages.",
       futureRelevance: "Skills will remain relevant in evolving markets.",
       relatedCertifications: ["Related certifications in this field"]
+    };
+  }
+};
+
+export const analyzeCertificateValueForHR = async (
+  title: string,
+  description: string
+): Promise<any> => {
+  const prompt = `Analyze this certificate's market value specifically for HR professionals:
+    Title: ${title}
+    Description: ${description}
+    
+    Provide insights on only these two aspects:
+    1. Industry demand
+    2. Future relevance
+    
+    Keep responses very concise and focused on what HR professionals would find valuable.
+    
+    Return a JSON object with:
+    {
+      "industryDemand": string (keep concise, 1-2 sentences),
+      "futureRelevance": string (keep concise, 1-2 sentences)
+    }`;
+
+  try {
+    const response = await getAIClient(prompt);
+    
+    // Try to clean and parse the response as JSON
+    try {
+      const cleanResponse = response.replace(/```json|```/g, "").trim();
+      return JSON.parse(cleanResponse);
+    } catch (parseError) {
+      console.warn("Failed to parse AI response for HR view as JSON, using fallback format", parseError);
+      
+      // If JSON parsing fails, return a structured fallback object with only the HR-relevant fields
+      return {
+        industryDemand: `The ${title} certification is in high demand in the current job market, with organizations actively seeking professionals who possess this credential.`,
+        futureRelevance: `Skills validated by the ${title} certification are projected to remain relevant as the industry evolves, providing long-term value for organizations.`
+      };
+    }
+  } catch (error) {
+    console.error("Error getting HR AI analysis:", error);
+    // Return fallback data if the entire process fails
+    return {
+      industryDemand: "This certification validates skills that are currently in demand across the industry.",
+      futureRelevance: "The knowledge demonstrated by this certificate aligns with projected future industry needs."
     };
   }
 };

@@ -276,7 +276,6 @@ const IssueCertificate = () => {
       const { error } = await supabase.from("certificates").insert([
         {
           title: formData.title,
-          description: formData.description,
           recipient_address: formData.recipient_address,
           issuer_id: data.data.wallet_address,
           status: "issued",
@@ -512,7 +511,7 @@ const IssueCertificate = () => {
               />
             </div>
 
-            <div>
+            {/* <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Description
@@ -547,7 +546,7 @@ const IssueCertificate = () => {
                   setFormData({ ...formData, description: e.target.value })
                 }
               />
-            </div>
+            </div> */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -633,7 +632,7 @@ const IssueCertificate = () => {
                 variant="outline"
                 onClick={validateCertificate}
                 disabled={
-                  isValidating || !formData.title || !formData.description
+                  isValidating || !formData.title
                 }
                 className="flex-1 flex items-center justify-center space-x-2 py-6 px-6 rounded-lg transition-colors disabled:opacity-50"
               >

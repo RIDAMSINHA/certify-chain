@@ -21,7 +21,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from '@/providers/AuthProvider';
-import { analyzeCertificateValue, generateShareableHighlights } from '@/utils/ai';
+import { analyzeCertificateValue, analyzeCertificateValueForHR, generateShareableHighlights } from '@/utils/ai';
 import { blockchainService } from '@/utils/blockchain';
 import { motion } from "framer-motion";
 
@@ -65,6 +65,7 @@ const CertificateView = () => {
   const [previewType, setPreviewType] = useState<'image' | 'pdf' | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'preview'>('details');
+  const [isHRView, setIsHRView] = useState(false);
 
   useEffect(() => {
     const referrer = document.referrer;
@@ -84,6 +85,32 @@ const CertificateView = () => {
       navigate('/auth');
     }
   }, [user, loading, navigate, publicUrl]);
+
+  // Check if the current user is an HR viewer
+  useEffect(() => {
+    const checkIfHR = async () => {
+      try {
+        if (user) {
+          console.log("USER:", user);
+          const userData = user.user_metadata.is_issuer;
+          console.log("USERDATA:", userData);
+          
+          // If userData is 'true' or true, set HR view
+          if (userData === 'true' || userData === true) {
+            console.log('HR user detected');
+            setIsHRView(true);
+          } else {
+            setIsHRView(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking if user is HR:', error);
+        setIsHRView(false);
+      }
+    };
+    
+    checkIfHR();
+  }, [user]);
 
   const fetchCertificate = async () => {
     try {
@@ -392,7 +419,11 @@ const CertificateView = () => {
   const loadMarketInsights = async (title: string, description: string) => {
     setIsLoadingInsights(true);
     try {
-      const insights = await analyzeCertificateValue(title, description);
+      // Use different analysis function based on user type
+      const insights = isHRView 
+        ? await analyzeCertificateValueForHR(title, description)
+        : await analyzeCertificateValue(title, description);
+      
       setMarketInsights(insights);
     } catch (error) {
       console.error('Error loading market insights:', error);
@@ -712,30 +743,65 @@ const CertificateView = () => {
                     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                       <h2 className="text-lg font-semibold mb-4 text-gray-800 flex items-center gap-2">
                         <Building className="w-5 h-5 text-blue-500" />
-                        Market Insights
+                        {isHRView ? "HR Certificate Analysis" : "Market Insights"}
                       </h2>
-                      <div className="grid gap-4">
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                          <h3 className="font-medium mb-2 text-blue-700">Industry Demand</h3>
-                          <p className="text-gray-700">{marketInsights.industryDemand}</p>
+                      
+                      {isHRView ? (
+                        // HR View - Only show Industry Demand and Future Relevance
+                        <div className="grid gap-4">
+                          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h3 className="font-medium mb-2 text-blue-700">Industry Demand</h3>
+                            <p className="text-gray-700">{marketInsights.industryDemand}</p>
+                          </div>
+                          
+                          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                            <h3 className="font-medium mb-2 text-orange-700">Future Relevance</h3>
+                            <p className="text-gray-700">{marketInsights.futureRelevance}</p>
+                          </div>
                         </div>
-                        <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                          <h3 className="font-medium mb-2 text-green-700">Career Opportunities</h3>
-                          <ul className="list-disc list-inside space-y-1">
-                            {marketInsights.careerOpportunities.map((opportunity, index) => (
-                              <li key={index} className="text-gray-700">{opportunity}</li>
-                            ))}
-                          </ul>
+                      ) : (
+                        // Regular User View - Show Full Market Insights
+                        <div className="grid gap-4">
+                          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h3 className="font-medium mb-2 text-blue-700">Industry Demand</h3>
+                            <p className="text-gray-700">{marketInsights.industryDemand}</p>
+                          </div>
+                          
+                          {marketInsights.careerOpportunities && (
+                            <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                              <h3 className="font-medium mb-2 text-green-700">Career Opportunities</h3>
+                              <ul className="list-disc list-inside space-y-1">
+                                {marketInsights.careerOpportunities.map((opportunity, index) => (
+                                  <li key={index} className="text-gray-700">{opportunity}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {marketInsights.salaryImpact && (
+                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+                              <h3 className="font-medium mb-2 text-purple-700">Salary Impact</h3>
+                              <p className="text-gray-700">{marketInsights.salaryImpact}</p>
+                            </div>
+                          )}
+                          
+                          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                            <h3 className="font-medium mb-2 text-orange-700">Future Relevance</h3>
+                            <p className="text-gray-700">{marketInsights.futureRelevance}</p>
+                          </div>
+                          
+                          {marketInsights.relatedCertifications && (
+                            <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                              <h3 className="font-medium mb-2 text-indigo-700">Related Certifications</h3>
+                              <ul className="list-disc list-inside space-y-1">
+                                {marketInsights.relatedCertifications.map((cert, index) => (
+                                  <li key={index} className="text-gray-700">{cert}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
-                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-                          <h3 className="font-medium mb-2 text-purple-700">Salary Impact</h3>
-                          <p className="text-gray-700">{marketInsights.salaryImpact}</p>
-                        </div>
-                        <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                          <h3 className="font-medium mb-2 text-orange-700">Future Relevance</h3>
-                          <p className="text-gray-700">{marketInsights.futureRelevance}</p>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   )}
 

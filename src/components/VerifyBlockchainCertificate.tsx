@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Shield, Check, X, Loader2, AlertCircle } from "lucide-react";
+import { Shield, Check, X, Loader2, AlertCircle, Clock, Award, File, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { blockchainService } from "@/utils/blockchain";
@@ -14,6 +14,7 @@ export function VerifyBlockchainCertificate() {
   const [verificationResult, setVerificationResult] = useState<boolean | null>(
     null
   );
+  const [certificateDetails, setCertificateDetails] = useState<any>(null);
   const [isUserRegistered, setIsUserRegistered] = useState(blockchainService.isUserRegistered());
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
   const [registrationData, setRegistrationData] = useState({
@@ -37,10 +38,11 @@ export function VerifyBlockchainCertificate() {
 
     setVerifying(true);
     setVerificationResult(null);
+    setCertificateDetails(null);
 
     try {
       let processedCertId = certId.trim();
-      console.log("Processing certificate ID1:", processedCertId);
+      console.log("Processing certificate ID:", processedCertId);
 
       // Check if it's a URL, extract the certificate ID from the Supabase record
       if (processedCertId.includes("/") || !processedCertId.startsWith("0x")) {
@@ -90,15 +92,28 @@ export function VerifyBlockchainCertificate() {
           return;
         }
       }
-      console.log("Processing certificate ID2:", processedCertId);
-      const result = await blockchainService.verifyCertificate(processedCertId);
-      setVerificationResult(result);
-      if (result) {
-        toast.success("Certificate verified on blockchain!");
+      
+      console.log("Verifying certificate ID:", processedCertId);
+      
+      // Use getCertificateDetails instead of verifyCertificate for more accurate verification
+      const certDetails = await blockchainService.getCertificateDetails(processedCertId);
+      
+      // Store the full certificate details
+      setCertificateDetails(certDetails);
+      
+      if (certDetails && certDetails.recipient !== '0x0000000000000000000000000000000000000000') {
+        // If we have valid certificate details and recipient is not zero address
+        setVerificationResult(certDetails.isValid);
+        
+        if (certDetails.isValid) {
+          toast.success("Certificate verified on blockchain!");
+        } else {
+          toast.warning("Certificate exists but has been revoked");
+        }
       } else {
-        toast.error(
-          "Certificate verification failed or certificate is not valid"
-        );
+        // Certificate doesn't exist on the blockchain
+        setVerificationResult(false);
+        toast.error("Certificate not found on blockchain");
       }
     } catch (error) {
       console.error("Error verifying certificate:", error);
@@ -132,6 +147,20 @@ export function VerifyBlockchainCertificate() {
     } finally {
       setIsRegistering(false);
     }
+  };
+
+  const formatDate = (timestamp: number) => {
+    if (!timestamp) return "Unknown";
+    return new Date(timestamp * 1000).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const shortenAddress = (address: string) => {
+    if (!address || address === '0x0000000000000000000000000000000000000000') return "Unknown";
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
 
   return (
@@ -250,31 +279,105 @@ export function VerifyBlockchainCertificate() {
         </div>
 
         {verificationResult !== null && (
-          <div
-            className={`mt-4 p-4 rounded-lg ${
-              verificationResult ? "bg-green-50" : "bg-red-50"
-            }`}
-          >
-            <div className="flex items-center">
-              <Shield
-                className={`w-5 h-5 mr-2 ${
-                  verificationResult ? "text-green-600" : "text-red-600"
-                }`}
-              />
-              {verificationResult ? (
-                <>
-                  <Check className="w-4 h-4 text-green-600 mr-2" />
-                  <span className="font-medium text-green-800">
-                    Certificate is valid and authentic
-                  </span>
-                </>
-              ) : (
-                <>
-                  <X className="w-4 h-4 text-red-600 mr-2" />
-                  <span className="font-medium text-red-800">
-                    Certificate could not be verified
-                  </span>
-                </>
+          <div className="mt-4">
+            <div className={`p-6 rounded-lg ${
+              verificationResult
+                ? "bg-green-50 border border-green-200"
+                : "bg-red-50 border border-red-200"
+            }`}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-full ${
+                  verificationResult
+                    ? "bg-green-100 text-green-700"
+                    : "bg-red-100 text-red-700"
+                }`}>
+                  {verificationResult ? (
+                    <Shield className="w-6 h-6" />
+                  ) : (
+                    <X className="w-6 h-6" />
+                  )}
+                </div>
+                <div>
+                  <h3 className={`text-lg font-semibold ${
+                    verificationResult ? "text-green-800" : "text-red-800"
+                  }`}>
+                    {verificationResult
+                      ? "Valid Certificate"
+                      : certificateDetails && certificateDetails.recipient !== '0x0000000000000000000000000000000000000000'
+                        ? "Revoked Certificate"
+                        : "Certificate Not Found"
+                    }
+                  </h3>
+                  <p className={`text-sm ${
+                    verificationResult ? "text-green-600" : "text-red-600"
+                  }`}>
+                    {verificationResult
+                      ? "This certificate is valid and has been verified on the blockchain."
+                      : certificateDetails && certificateDetails.recipient !== '0x0000000000000000000000000000000000000000'
+                        ? "This certificate exists but has been revoked."
+                        : "This certificate was not found on the blockchain."
+                    }
+                  </p>
+                </div>
+              </div>
+
+              {/* Display certificate details if found */}
+              {certificateDetails && certificateDetails.recipient !== '0x0000000000000000000000000000000000000000' && (
+                <div className="mt-4 space-y-4">
+                  <div className="bg-white p-4 rounded-lg border border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-3">Certificate Details</h4>
+                    
+                    <div className="space-y-3">
+                      {certificateDetails.name && (
+                        <div className="flex items-center">
+                          <Award className="w-4 h-4 text-blue-500 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-500">Name</p>
+                            <p className="text-sm font-medium">{certificateDetails.name}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center">
+                        <Shield className="w-4 h-4 text-blue-500 mr-2" />
+                        <div>
+                          <p className="text-xs text-gray-500">Issuer</p>
+                          <p className="text-sm font-medium">{shortenAddress(certificateDetails.issuer)}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <File className="w-4 h-4 text-blue-500 mr-2" />
+                        <div>
+                          <p className="text-xs text-gray-500">Recipient</p>
+                          <p className="text-sm font-medium">{shortenAddress(certificateDetails.recipient)}</p>
+                        </div>
+                      </div>
+                      
+                      {certificateDetails.ipfsHash && (
+                        <div className="flex items-center">
+                          <FileText className="w-4 h-4 text-blue-500 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-500">IPFS Hash</p>
+                            <p className="text-sm font-medium overflow-hidden text-ellipsis">
+                              {certificateDetails.ipfsHash?.substring(0, 20)}...
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {certificateDetails.issueDate > 0 && (
+                        <div className="flex items-center">
+                          <Clock className="w-4 h-4 text-blue-500 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-500">Issue Date</p>
+                            <p className="text-sm font-medium">{formatDate(certificateDetails.issueDate)}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
