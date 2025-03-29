@@ -1,158 +1,159 @@
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Award, Check, Loader, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { User, Building2, Briefcase } from "lucide-react";
-import { useAuth } from "@/providers/AuthProvider";
+import { blockchainService } from "@/utils/blockchain";
 
 const Register = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: user?.user_metadata?.name || "",
-    isIssuer: false,
-  });
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isConnected, setIsConnected] = useState(blockchainService.isConnected());
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [name, setName] = useState("");
+  const [isHR, setIsHR] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
-  useEffect(() => {
-    const checkExistingProfile = async () => {
-      if (!user) {
-        navigate("/auth");
-        return;
-      }
-      if (user.user_metadata && user.user_metadata.name) {
-        // If the user already has a name set in their metadata, registration is complete.
-        navigate("/");
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (profile) {
-        navigate("/");
-      }
-    };
-
-    checkExistingProfile();
-  }, [user, navigate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  const connectWallet = async () => {
+    setIsConnecting(true);
     try {
-      if (!user) throw new Error("No user found");
-
-      // Update the user's metadata so that raw_user_meta_data includes name and is_issuer
-      const { data, error } = await supabase.auth.updateUser({
-        data: {
-          name: formData.name,
-          is_issuer: formData.isIssuer,
-        },
-      });
-
-      if (error) throw error;
-
-      console.log("Updated user metadata:", data);
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert([
-          {
-            id: user.id,
-            wallet_address: user.user_metadata.wallet_address,
-            name: formData.name,
-            is_issuer: formData.isIssuer,
-          },
-        ]);
-
-      if (profileError) throw profileError;
-
-      // Refresh the session to get the latest metadata.
-      const { data: { session: newSession }, error: getSessionError } = await supabase.auth.getSession();
-      if (getSessionError) throw getSessionError;
-      if (newSession) {
-        const { error: setSessionError } = await supabase.auth.setSession({
-          access_token: newSession.access_token,
-          refresh_token: newSession.refresh_token,
-        });
-        if (setSessionError) throw setSessionError;
+      const address = await blockchainService.connectWallet();
+      if (address) {
+        setIsConnected(true);
+        toast.success("Wallet connected successfully");
       }
-      
-      toast.success("Profile created successfully!");
-      navigate("/");
     } catch (error) {
-      console.error("Error creating profile:", error);
-      toast.error("Failed to create profile");
+      console.error("Error connecting wallet:", error);
+      toast.error("Failed to connect wallet");
     } finally {
-      setIsLoading(false);
+      setIsConnecting(false);
     }
   };
 
-  if (!user) return null;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!name.trim()) {
+      toast.error("Please enter your name");
+      return;
+    }
+    
+    setIsRegistering(true);
+    try {
+      const success = await blockchainService.signup(name, isHR);
+      
+      if (success) {
+        setSuccessMessage("Registration successful!");
+        toast.success("You've been registered successfully");
+        
+        // After a short delay, navigate to dashboard
+        setTimeout(() => {
+          navigate("/userdashboard");
+        }, 2000);
+      } else {
+        toast.error("Registration failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error registering:", error);
+      toast.error("An error occurred during registration");
+    } finally {
+      setIsRegistering(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8"
-      >
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Complete Your Profile
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Please provide additional information to complete your registration
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <Card className="max-w-md w-full p-8 shadow-lg">
+        <div className="text-center mb-8">
+          <div className="mx-auto bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mb-4">
+            <User className="h-8 w-8 text-blue-600" />
+          </div>
+          <h1 className="text-2xl font-bold">Register on Blockchain</h1>
+          <p className="text-gray-500 mt-2">
+            Register to access your certificates and verify them on the blockchain
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="rounded-md shadow-sm space-y-4">
+        {!isConnected ? (
+          <div className="space-y-6">
+            <p className="text-center text-gray-600">
+              Connect your wallet to register on the blockchain
+            </p>
+            <Button 
+              onClick={connectWallet} 
+              disabled={isConnecting}
+              className="w-full"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Connect Wallet'
+              )}
+            </Button>
+          </div>
+        ) : successMessage ? (
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <Check className="w-8 h-8 text-green-600" />
+            </div>
+            <h2 className="text-xl font-semibold text-green-700">{successMessage}</h2>
+            <p className="text-gray-600">Redirecting to your dashboard...</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Full Name
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                Your Name
               </label>
               <input
                 id="name"
-                name="name"
                 type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your full name"
                 required
-                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
-
+            
             <div className="flex items-center">
               <input
-                id="is-issuer"
-                name="is-issuer"
+                id="isHR"
                 type="checkbox"
+                checked={isHR}
+                onChange={(e) => setIsHR(e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                checked={formData.isIssuer}
-                onChange={(e) => setFormData({ ...formData, isIssuer: e.target.checked })}
               />
-              <label htmlFor="is-issuer" className="ml-2 block text-sm text-gray-900">
-                Register as HR/Issuer
+              <label htmlFor="isHR" className="ml-2 block text-sm text-gray-700">
+                Register as HR (enables issuing certificates)
               </label>
             </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {isLoading ? "Creating Profile..." : "Complete Registration"}
-          </button>
-        </form>
-      </motion.div>
+            
+            <Button
+              type="submit"
+              disabled={isRegistering || !name.trim()}
+              className="w-full"
+            >
+              {isRegistering ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Registering...
+                </>
+              ) : (
+                'Register'
+              )}
+            </Button>
+            
+            <p className="text-xs text-gray-500 text-center">
+              Registration will confirm a transaction on the blockchain. Please make sure you have enough ETH for gas fees.
+            </p>
+          </form>
+        )}
+      </Card>
     </div>
   );
 };

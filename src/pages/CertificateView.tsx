@@ -86,25 +86,104 @@ const CertificateView = () => {
 
   const fetchCertificate = async () => {
     try {
-      const { data, error } = await supabase
-        .from('certificates')
-        .select('*')
-        .eq('public_url', publicUrl)
-        .single();
+      if (!publicUrl) {
+        throw new Error('No certificate ID provided');
+      }
 
-      if (error) throw error;
+      let certificateQuery = supabase
+        .from('certificates')
+        .select('*');
+
+      // Try to determine if the publicUrl is a UUID or an IPFS hash
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(publicUrl);
+      
+      if (isUuid) {
+        // If it's a UUID format, query by public_url directly
+        certificateQuery = certificateQuery.eq('public_url', publicUrl);
+      } else {
+        // If it's not a UUID, try treating it as an IPFS hash and query by metadata_uri
+        certificateQuery = certificateQuery.eq('metadata_uri', publicUrl);
+      }
+
+      const { data, error } = await certificateQuery.maybeSingle();
+
+      if (error) {
+        console.error('Error fetching certificate:', error);
+        
+        // If we get the specific UUID syntax error, try an alternative approach
+        if (error.code === '22P02' && error.message.includes('invalid input syntax for type uuid')) {
+          // Try fetching by blockchain_cert_id instead
+          const { data: certByBlockchainId, error: blockchainIdError } = await supabase
+            .from('certificates')
+            .select('*')
+            .eq('blockchain_cert_id', publicUrl)
+            .maybeSingle();
+            
+          if (blockchainIdError) {
+            // If we still can't find it, try checking if it might be an Ethereum address
+            if (publicUrl.startsWith('0x') && publicUrl.length === 42) {
+              // It might be a recipient address
+              const { data: certByRecipient, error: recipientError } = await supabase
+                .from('certificates')
+                .select('*')
+                .eq('recipient_address', publicUrl)
+                .limit(1);
+                
+              if (!recipientError && certByRecipient && certByRecipient.length > 0) {
+                setCertificate(certByRecipient[0]);
+                
+                // Verify on blockchain if certificate has blockchain_cert_id
+                if (certByRecipient[0].blockchain_cert_id) {
+                  verifyOnBlockchain(certByRecipient[0].blockchain_cert_id);
+                }
+                
+                // Only load AI insights if user is authenticated
+                if (user) {
+                  loadMarketInsights(certByRecipient[0].title, certByRecipient[0].description);
+                  loadShareableHighlights(certByRecipient[0].title, certByRecipient[0].description);
+                  
+                  // Check if this is the user's certificate
+                  checkUserOwnership(certByRecipient[0]);
+                }
+                
+                setLoading(false);
+                return;
+              }
+            }
+            
+            throw blockchainIdError;
+          }
+          
+          if (certByBlockchainId) {
+            setCertificate(certByBlockchainId);
+            
+            // Verify on blockchain if certificate has blockchain_cert_id
+            if (certByBlockchainId.blockchain_cert_id) {
+              verifyOnBlockchain(certByBlockchainId.blockchain_cert_id);
+            }
+            
+            // Only load AI insights if user is authenticated
+            if (user) {
+              loadMarketInsights(certByBlockchainId.title, certByBlockchainId.description);
+              loadShareableHighlights(certByBlockchainId.title, certByBlockchainId.description);
+              
+              // Check if this is the user's certificate
+              checkUserOwnership(certByBlockchainId);
+            }
+            
+            setLoading(false);
+            return;
+          }
+        }
+        
+        throw error;
+      }
       
       if (!data) {
         toast.error('Certificate not found');
         navigate('/');
         return;
       }
-
-      // if (data.status === 'private') {
-      //   toast.error('This certificate is private');
-      //   navigate('/');
-      //   return;
-      // }
 
       setCertificate(data);
 
@@ -113,31 +192,38 @@ const CertificateView = () => {
         verifyOnBlockchain(data.blockchain_cert_id);
       }
 
-      // We'll no longer fetch the certificate preview automatically
-      // It will only be fetched when the user switches to the preview tab
-
       // Only load AI insights if user is authenticated
       if (user) {
         // Load AI insights
         loadMarketInsights(data.title, data.description);
         loadShareableHighlights(data.title, data.description);
-
-        const { data: userData, error: userError } = await supabase
-          .from('certificates')
-          .select('*')
-          .eq('recipient_address', data.recipient_address)
-          .eq('title', data.title)
-          .maybeSingle();
-
-        if (!userError && userData) {
-          setUserCertificate(userData);
-        }
+        
+        // Check if this is the user's certificate
+        checkUserOwnership(data);
       }
     } catch (error) {
       console.error('Error fetching certificate:', error);
       toast.error('Failed to load certificate');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Helper function to check if the certificate belongs to the current user
+  const checkUserOwnership = async (cert: Certificate) => {
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('certificates')
+        .select('*')
+        .eq('recipient_address', cert.recipient_address)
+        .eq('title', cert.title)
+        .maybeSingle();
+
+      if (!userError && userData) {
+        setUserCertificate(userData);
+      }
+    } catch (error) {
+      console.error('Error checking certificate ownership:', error);
     }
   };
 

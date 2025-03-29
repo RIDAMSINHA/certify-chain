@@ -1,6 +1,6 @@
-
 import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
+import { ethers } from 'ethers';
 import { 
   Award, 
   ExternalLink, 
@@ -10,13 +10,26 @@ import {
   Building,
   Plus,
   GripVertical,
-  Eye
+  Eye,
+  Loader
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from 'react-router-dom';
+import { blockchainService } from "@/utils/blockchain";
 
+// Define a new interface for blockchain certificates
+interface BlockchainCertificate {
+  name: string;
+  issuer: string;
+  recipient: string;
+  ipfsHash: string;
+  issueDate: number;
+  isValid: boolean;
+}
+
+// Extended certificate interface combining blockchain data with UI display needs
 interface Certificate {
   blockchain_cert_id: string;
   title: string;
@@ -34,10 +47,14 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [draggedCert, setDraggedCert] = useState<Certificate | null>(null);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const navigate = useNavigate();
 
-  // On mount, load showcase certificates from localStorage
+  // On mount, load showcase certificates from localStorage and check wallet connection
   useEffect(() => {
+    checkWalletConnection();
     const storedShowcase = localStorage.getItem("showcaseCertificates");
     if (storedShowcase) {
       try {
@@ -49,64 +66,155 @@ const Dashboard = () => {
     }
   }, []);
 
-  const fetchCertificates = async () => {
+  // Check if wallet is connected
+  const checkWalletConnection = async () => {
+    const isConnected = blockchainService.isConnected();
+    setIsWalletConnected(isConnected);
+    
+    if (isConnected) {
+      const isUserRegistered = blockchainService.isUserRegistered();
+      setIsRegistered(isUserRegistered);
+      if (isUserRegistered) {
+        fetchCertificatesFromBlockchain();
+      }
+    }
+  };
+
+  // Connect wallet and register if needed
+  const connectWallet = async () => {
+    setIsConnecting(true);
     try {
+      const address = await blockchainService.connectWallet();
+      if (address) {
+        setIsWalletConnected(true);
+        const isUserRegistered = blockchainService.isUserRegistered();
+        setIsRegistered(isUserRegistered);
+        
+        if (isUserRegistered) {
+          fetchCertificatesFromBlockchain();
+        } else {
+          toast.warning("Please register your account to view your certificates");
+          // Could navigate to registration page here
+        }
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      toast.error("Failed to connect wallet");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  // Fetch certificates from blockchain
+  const fetchCertificatesFromBlockchain = async () => {
+    setLoading(true);
+    try {
+      // Get certificate identifiers from blockchain
+      const blockchainCertIds = await blockchainService.getUserCertificates();
+      console.log("Blockchain certificate IDs:", blockchainCertIds);
+      
+      if (blockchainCertIds.length === 0) {
+        setCertificates([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Extract recipient addresses from blockchain certificates
+      const recipientAddresses = blockchainCertIds.map(cert => cert.recipient);
+      
+      // Fetch certificate details from Supabase using recipient addresses
       const { data, error } = await supabase
         .from('certificates')
-        .select('*');
-      if (error) throw error;
+        .select('*')
+        .in('recipient_address', recipientAddresses);
       
-      // Sort certificates based on priority and date
-      const sortedData = [...(data || [])].sort((a, b) => {
-        if (a.priority !== b.priority) {
-          return b.priority - a.priority; // pinned (1) first
+      if (error) {
+        console.error('Error fetching certificates from database:', error);
+        toast.error('Failed to fetch certificates from database');
+        setCertificates([]);
+        return;
+      }
+      
+      console.log('Certificates fetched from database:', data);
+      
+      if (!data || data.length === 0) {
+        // No certificates found in database matching the blockchain recipient addresses
+        // Create minimal certificates from blockchain data
+        const minimalCerts = blockchainCertIds.map((cert, index) => {
+          return {
+            blockchain_cert_id: cert.certId,
+            title: cert.name || `Certificate #${index + 1}`,
+            issuer_id: 'Unknown Issuer',
+            recipient_address: cert.recipient,
+            status: 'issued',
+            priority: 0,
+            public_url: cert.ipfsHash,
+            created_at: new Date().toISOString(),
+            description: `Certificate for ${cert.recipient.substring(0, 6)}...${cert.recipient.substring(cert.recipient.length - 4)}`
+          };
+        });
+        
+        // Sort certificates based on date (even though they're all the same here)
+        const sortedCerts = [...minimalCerts].sort((a, b) => {
+          return sortOrder === 'desc'
+            ? new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+        
+        // Remove certificates that are already in the showcase
+        const showcaseIds = showcaseCertificates.map(cert => cert.blockchain_cert_id);
+        const filteredCerts = sortedCerts.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
+        
+        setCertificates(filteredCerts);
+        return;
+      }
+      
+      // Enhance database certificates with blockchain identifiers if needed
+      const enhancedCerts = data.map(dbCert => {
+        // Find matching blockchain cert by recipient address
+        const matchingBlockchainCert = blockchainCertIds.find(
+          bc => bc.recipient.toLowerCase() === dbCert.recipient_address.toLowerCase()
+        );
+        
+        // If there's a match and we don't have a blockchain_cert_id yet, add it
+        if (matchingBlockchainCert && !dbCert.blockchain_cert_id) {
+          return {
+            ...dbCert,
+            blockchain_cert_id: matchingBlockchainCert.certId
+          };
         }
+        
+        return dbCert;
+      });
+      
+      // Sort certificates based on date
+      const sortedCerts = [...enhancedCerts].sort((a, b) => {
         return sortOrder === 'desc'
           ? new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       });
-
+      
       // Remove certificates that are already in the showcase
-      const storedShowcase = localStorage.getItem("showcaseCertificates");
-      let showcaseIds: string[] = [];
-      if (storedShowcase) {
-        try {
-          const parsed = JSON.parse(storedShowcase) as Certificate[];
-          showcaseIds = parsed.map(cert => cert.blockchain_cert_id);
-        } catch (error) {
-          console.error("Error parsing showcaseCertificates from localStorage", error);
-        }
-      }
-      const filteredData = sortedData.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
-      setCertificates(filteredData);
+      const showcaseIds = showcaseCertificates.map(cert => cert.blockchain_cert_id);
+      const filteredCerts = sortedCerts.filter(cert => !showcaseIds.includes(cert.blockchain_cert_id));
+      
+      setCertificates(filteredCerts);
     } catch (error) {
-      console.error('Error fetching certificates:', error);
-      toast.error('Failed to load certificates');
+      console.error('Error fetching certificates from blockchain:', error);
+      toast.error('Failed to load certificates from blockchain');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCertificates();
-  }, [sortOrder]);
-
-  const togglePriority = async (id: string, currentPriority: number) => {
-    try {
-      const newPriority = currentPriority === 1 ? 0 : 1;
-      const { error } = await supabase
-        .from('certificates')
-        .update({ priority: newPriority })
-        .eq('blockchain_cert_id', id);
-      if (error) throw error;
-      
-      toast.success(newPriority === 1 ? 'Certificate pinned' : 'Certificate unpinned');
-      // Refetch certificates to update ordering
-      await fetchCertificates();
-    } catch (error) {
-      console.error('Error updating priority:', error);
-      toast.error('Failed to update certificate priority');
+    if (isRegistered) {
+      fetchCertificatesFromBlockchain();
     }
+  }, [sortOrder, isRegistered]);
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
   };
 
   const shareProfileUrl = () => {
@@ -145,8 +253,10 @@ const Dashboard = () => {
     const newShowcase = showcaseCertificates.filter(c => c.blockchain_cert_id !== certId);
     setShowcaseCertificates(newShowcase);
     localStorage.setItem("showcaseCertificates", JSON.stringify(newShowcase));
-    // Re-fetch main certificates (or add the removed cert manually)
-    fetchCertificates();
+    // Re-fetch certificates to add the removed one back to the main list
+    if (isRegistered) {
+      fetchCertificatesFromBlockchain();
+    }
     toast.success('Certificate removed from showcase');
   };
 
@@ -168,10 +278,61 @@ const Dashboard = () => {
     toast.success('Share link copied to clipboard');
   };
 
+  if (!isWalletConnected) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-8 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-xl shadow-md max-w-md w-full text-center">
+          <Award className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-4">Connect Your Wallet</h2>
+          <p className="text-gray-600 mb-6">
+            Connect your wallet to view your blockchain certificates
+          </p>
+          <Button 
+            onClick={connectWallet} 
+            disabled={isConnecting}
+            className="w-full"
+          >
+            {isConnecting ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              'Connect Wallet'
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isRegistered) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-8 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-xl shadow-md max-w-md w-full text-center">
+          <Award className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-4">Registration Required</h2>
+          <p className="text-gray-600 mb-6">
+            You need to register your account on the blockchain to view your certificates.
+          </p>
+          <Button 
+            onClick={() => navigate('/register')}
+            className="w-full"
+          >
+            Register Now
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 p-8 flex items-center justify-center">
-        <div className="text-xl text-gray-600">Loading certificates...</div>
+        <div className="flex flex-col items-center">
+          <Loader className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+          <div className="text-xl text-gray-600">Loading certificates...</div>
+        </div>
       </div>
     );
   }
@@ -248,83 +409,97 @@ const Dashboard = () => {
 
         {/* All Certificates */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">My Certificates</h1>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-            className="flex items-center gap-2"
-          >
-            <ArrowUpDown className="w-4 h-4" />
-            Sort by {sortOrder === 'desc' ? 'Oldest First' : 'Newest First'}
-          </Button>
+          <h2 className="text-2xl font-bold">
+            My Certificates
+            <span className="ml-3 text-sm bg-blue-100 text-blue-800 py-1 px-2 rounded-full">
+              {certificates.length}
+            </span>
+          </h2>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={toggleSortOrder}
+              className="gap-2"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
+            </Button>
+          </div>
         </div>
 
-        <div className="grid gap-6">
-          {certificates.map((cert) => (
-            <Card 
-              key={cert.blockchain_cert_id} 
-              className="p-6 hover:shadow-lg transition-shadow cursor-pointer"
-              draggable
-              onDragStart={() => handleDragStart(cert)}
-              onClick={() => viewCertificate(cert.public_url)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <Award className={`w-10 h-10 ${cert.priority === 1 ? 'text-yellow-500' : 'text-blue-500'}`} />
-                  <div>
-                    <h2 className="text-xl font-semibold">{cert.title}</h2>
-                    <div className="flex items-center gap-2 text-gray-600 mt-1">
-                      <Building className="w-4 h-4" />
-                      <span>Issued by: {cert.issuer_id}</span>
-                      <Calendar className="w-4 h-4 ml-2" />
-                      <span>{new Date(cert.created_at).toLocaleDateString()}</span>
+        {certificates.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-100">
+            <Award className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-xl font-medium text-gray-700 mb-2">No Certificates Found</h3>
+            <p className="text-gray-500 max-w-md mx-auto">
+              You don't have any certificates on the blockchain yet. When you receive certificates, they will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {certificates.map((cert) => (
+              <Card 
+                key={cert.blockchain_cert_id} 
+                className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100"
+                draggable
+                onDragStart={() => handleDragStart(cert)}
+              >
+                <div className="p-6 bg-white">
+                  <div className="flex justify-between items-start mb-4">
+                    <Award className="w-10 h-10 text-blue-500" />
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-full"
+                        onClick={() => viewCertificate(cert.public_url)}
+                        title="View Certificate"
+                      >
+                        <Eye className="h-4 w-4 text-gray-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-full"
+                        onClick={() => shareUrl(cert.public_url)}
+                        title="Share Certificate"
+                      >
+                        <ExternalLink className="h-4 w-4 text-gray-500" />
+                      </Button>
                     </div>
                   </div>
+                  <h3 className="font-bold text-lg mb-1 text-gray-800">{cert.title}</h3>
+                  {/* <div className="text-sm text-gray-500 mb-4">
+                    {cert.description}
+                  </div> */}
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="flex items-center text-xs text-gray-500">
+                      <Calendar className="w-3 h-3 mr-1" />
+                      {new Date(cert.created_at).toLocaleDateString()}
+                    </div>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs ${
+                        cert.status === "issued"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {cert.status}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      togglePriority(cert.blockchain_cert_id, cert.priority);
-                    }}
-                    className={cert.priority === 1 ? "text-yellow-500" : ""}
-                  >
-                    <Pin className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      viewCertificate(cert.public_url);
-                    }}
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) =>{e.stopPropagation(); shareUrl(cert.public_url)}}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Share
-                  </Button>
+                <div className="bg-blue-50 px-6 py-3 text-xs text-gray-600 flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Building className="w-3 h-3 mr-1" />
+                    <span className="truncate max-w-[120px]">{cert.issuer_id}</span>
+                  </div>
+                  <span className="text-blue-600 font-medium">Drag to showcase</span>
                 </div>
-              </div>
-            </Card>
-          ))}
-
-          {certificates.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-lg">
-              <Award className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-600">No Certificates Yet</h3>
-              <p className="text-gray-500 mt-2">Your earned certificates will appear here</p>
-            </div>
-          )}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
