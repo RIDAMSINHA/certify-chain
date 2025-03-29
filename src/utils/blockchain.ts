@@ -38,11 +38,13 @@ export interface Certificate {
 }
 
 export class BlockchainService {
-  private provider: ethers.BrowserProvider | null = null;
+  private provider: ethers.BrowserProvider | ethers.JsonRpcProvider | null = null;
   private contract: ethers.Contract | null = null;
-  private signer: ethers.Signer | null = null;
+  private signer: ethers.JsonRpcSigner | null = null;
   private currentAccount: string | null = null;
   private userInfo: { name: string; isHR: boolean; isRegistered: boolean } | null = null;
+  private userRole: string | null = null;
+  private isRegisteredFlag: boolean = false;
 
   constructor() {
     this.initialize();
@@ -316,6 +318,117 @@ export class BlockchainService {
     }
   }
 
+  // Get certificates by recipient address
+  async getCertificatesByRecipient(recipientAddress: string): Promise<{certId: string, ipfsHash: string, recipient: string, name: string, issuer: string, issueDate: number, isValid: boolean}[]> {
+    if (!this.contract) {
+      await this.initialize();
+      if (!this.contract) {
+        console.error('Blockchain connection not available');
+        return [];
+      }
+    }
+
+    try {
+      // We need to query all certificates issued to this recipient
+      // Since there's no direct method, we'll use getLogs to find certificate issue events
+      
+      // First check if we have a provider
+      if (!this.provider) {
+        await this.setupProvider();
+        if (!this.provider) {
+          console.error('Blockchain provider not available');
+          return [];
+        }
+      }
+
+      // Get the contract address
+      const contractAddress = this.contract.target;
+      
+      // Define the event signature for CertificateIssued event
+      const eventSignature = "CertificateIssued(address,address,string,string,uint256,bytes32)";
+      const eventTopic = ethers.id(eventSignature);
+      
+      // Create a filter for logs where the recipient matches
+      const filter = {
+        address: contractAddress,
+        topics: [
+          eventTopic,
+          null, // Issuer (any)
+          ethers.zeroPadValue(recipientAddress.toLowerCase(), 32) // Recipient (specific)
+        ]
+      };
+      
+      // Get the logs
+      const logs = await this.provider.getLogs({
+        ...filter,
+        fromBlock: 0,
+        toBlock: 'latest'
+      });
+      
+      console.log("Certificate logs for recipient:", logs);
+      
+      // If we have logs, parse them to get certificate data
+      if (logs.length > 0) {
+        // Parse the logs to extract certificate data
+        const iface = new ethers.Interface(certifyChainABI);
+        
+        // Process each log to extract certificate data
+        const certificatePromises = logs.map(async (log) => {
+          try {
+            const parsedLog = iface.parseLog({
+              topics: log.topics as string[],
+              data: log.data
+            });
+            
+            if (!parsedLog || !parsedLog.args) {
+              return null;
+            }
+            
+            // Extract data from the event
+            const { issuer, recipient, name, ipfsHash, issueDate, certId } = parsedLog.args;
+            
+            // Verify the certificate is valid
+            const isValid = await this.verifyCertificate(certId);
+            
+            return {
+              certId,
+              ipfsHash,
+              recipient,
+              name,
+              issuer,
+              issueDate: Number(issueDate),
+              isValid
+            };
+          } catch (error) {
+            console.error("Error parsing certificate log:", error);
+            return null;
+          }
+        });
+        
+        // Wait for all certificate verifications to complete
+        const certificates = await Promise.all(certificatePromises);
+        
+        // Filter out any null results
+        return certificates.filter(cert => cert !== null) as {
+          certId: string,
+          ipfsHash: string,
+          recipient: string,
+          name: string,
+          issuer: string,
+          issueDate: number,
+          isValid: boolean
+        }[];
+      }
+      
+      // Try alternative approach by getting all user certificates from different users
+      // For now, return empty array
+      return [];
+    } catch (error) {
+      console.error('Error getting certificates by recipient:', error);
+      return [];
+    }
+  }
+
   // Revoke certificate (new method for CertifyChain)
   async revokeCertificate(certId: string): Promise<boolean> {
     if (!this.contract) {
@@ -371,6 +484,23 @@ export class BlockchainService {
 
   isConnected(): boolean {
     return this.signer !== null;
+  }
+
+  // Setup provider method
+  async setupProvider(): Promise<void> {
+    if (this.provider) return; // Already initialized
+    
+    try {
+      // Try to get the Ethereum provider from window.ethereum
+      if (typeof window !== 'undefined' && (window as any).ethereum) {
+        this.provider = new ethers.BrowserProvider((window as any).ethereum);
+      } else {
+        // Use a fallback provider for read-only operations
+        this.provider = new ethers.JsonRpcProvider('http://localhost:8545');
+      }
+    } catch (error) {
+      console.error('Error setting up provider:', error);
+    }
   }
 }
 
