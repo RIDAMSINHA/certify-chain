@@ -8,19 +8,26 @@ import { Key } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { EmailAuthForm } from "@/components/auth/EmailAuthForm";
 import { MetaMaskAuth } from "@/components/auth/MetaMaskAuth";
+import { log } from "console";
+import initializeAuth from "./Auth";
 
 const Auth = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isIssuer, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isMetaMaskLogin, setIsMetaMaskLogin] = useState(false);
 
   useEffect(() => {
-    if (user && user.user_metadata.profile) {
-      toast.info("You are already signed in");
-      navigate("/");
+    if (user) {
+      // If user is logged in but doesn't have a name, redirect to register
+      if (!user.user_metadata?.name) {
+        navigate('/register');
+      } else {
+        // Otherwise redirect based on role
+        navigate(isIssuer ? '/issue' : '/user');
+      }
     }
-  }, [user, navigate]);
+  }, [user, isIssuer, navigate]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -77,7 +84,11 @@ const Auth = () => {
                 isSignUp={isSignUp}
                 onSuccess={() => {
                   if (!isSignUp) {
-                    navigate("/");
+                    console.log("Auth details:", user, isIssuer );
+
+                    setTimeout(() => {
+                      navigate(isIssuer ? "/issue" : "/user");
+                    }, 0);
                   }
                 }}
               />

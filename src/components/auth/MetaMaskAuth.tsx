@@ -111,7 +111,7 @@ export const MetaMaskAuth = ({ onBack }: MetaMaskAuthProps) => {
             });
             if (setSessionError) throw new Error(setSessionError.message);
             toast.success("Signed in with MetaMask successfully");
-            navigate("/");
+            navigate("/user");
             return;
           } catch (error) {
             toast.error("Error logging in via MetaMask:", error.message);

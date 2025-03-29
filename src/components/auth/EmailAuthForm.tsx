@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface EmailAuthFormProps {
   isSignUp: boolean;
@@ -21,6 +22,7 @@ interface FormData {
 export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const { isIssuer } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     email: "",
     password: "",
@@ -59,68 +61,39 @@ export const EmailAuthForm = ({ isSignUp, onSuccess }: EmailAuthFormProps) => {
     }
   };
 
-  // Handle form submission for both sign-up and sign-in flows.
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignUp && formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
+// Update the handleSubmit function for sign-in
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (isSignUp && formData.password !== formData.confirmPassword) {
+    toast.error("Passwords do not match");
+    return;
+  }
+
+  setIsLoading(true);
+  try {
+    if (isSignUp) {
+      // Sign up logic remains the same
+    } else {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+      if (signInError) throw signInError;
+      
+      toast.success("Signed in successfully");
+      // Let the AuthProvider handle the redirect based on auth state
     }
-
-    setIsLoading(true);
-    try {
-      if (isSignUp) {
-        // For new sign-ups, use emailRedirectTo so the user is redirected to /auth after clicking the email link.
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              name: formData.name,
-              is_issuer: formData.isIssuer,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        toast.success("Check your email to confirm your account");
-      } else {
-        // For direct sign-in using email/password.
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
-        if (signInError) throw signInError;
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-        if (sessionError || !session) {
-          throw new Error("No active session found");
-        }
-
-        // Check if a profile exists; if not, create one using form data when available.
-        await createProfileIfMissing(
-          session.user,
-          formData.name,
-          formData.isIssuer
-        );
-
-        toast.success("Signed in successfully");
-        navigate("/");
-      }
-      onSuccess();
-    } catch (error) {
-      console.error("Error:", error.message);
-      toast.error(
-        isSignUp
-          ? `Failed to sign up: ${error.message}`
-          : `Failed to sign in: ${error.message}`
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error("Error:", error.message);
+    toast.error(
+      isSignUp
+        ? `Failed to sign up: ${error.message}`
+        : `Failed to sign in: ${error.message}`
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

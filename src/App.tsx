@@ -18,6 +18,9 @@ import Register from "./pages/Register";
 import CertificateView from "./pages/CertificateView";
 import ProfileView from "./pages/ProfileView";
 
+import LandingPage from "./pages/LandingPage";
+import UserLanding from "./pages/UserLanding";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -27,7 +30,7 @@ const App = () => (
       <Sonner />
         <Layout>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/register" element={<Register />} />
             <Route path="/userdashboard" element={<UserDashboard />} />
@@ -39,6 +42,10 @@ const App = () => (
             <Route path="/profile/:id" element={<UserProfile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
+            {/* <Route path="/test" element={<Index />} /> */}
+            <Route path="/user" element={<UserLanding />} />
+            <Route path="/issuer" element={<UserLanding />} />
+
           </Routes>
         </Layout>
     </TooltipProvider>

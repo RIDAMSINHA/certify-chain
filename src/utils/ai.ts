@@ -146,3 +146,20 @@ export const generateShareableHighlights = async (
   const cleanResponse = response.replace(/```json|```/g, "").trim();
   return JSON.parse(cleanResponse);
 };
+
+export const userProfileAIAnalysis = async (
+  data: string,
+  jobRole: string
+) : Promise<any> => {
+  const prompt = `Generate a 3-4 lines recommendation for what further courses should the user study to enhance his/her scope in this competitive job market if he/she is applying for job ${jobRole}, given that he/she have the following certificates: ${data} 
+  Return data in format " 1 liner critique of the current profile
+  Consider the following courses:,
+  Relevant Courses (in different lines) (maximum 3) (no markdown)"
+  Return as a JSON array of strings.`;
+  
+  const response = await getAIClient(prompt);
+  const cleanResponse = response.replace(/```json|```/g, "").trim();
+  return JSON.parse(cleanResponse);
+}
+
+

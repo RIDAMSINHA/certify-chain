@@ -35,6 +35,7 @@ const Layout = ({ children }: LayoutProps) => {
     if (
       !loading &&
       !user &&
+      location.pathname !== "/" &&
       location.pathname !== "/auth" &&
       location.pathname !== "/register" && 
       !isPublicSharePage
@@ -55,7 +56,11 @@ const Layout = ({ children }: LayoutProps) => {
   };
 
   const menuItems = [
-    { path: "/", label: "Home", icon: Home },
+    { 
+      path: isIssuer ? "/issuer" : "/user", 
+      label: "Home",
+      icon: Home 
+      },
     {
       path: isIssuer ? "/dashboard" : "/userdashboard",
       label: "Dashboard",
@@ -68,7 +73,7 @@ const Layout = ({ children }: LayoutProps) => {
   ];
 
   // Don't show sidebar on auth page, register page, or public share pages
-  if (location.pathname === "/auth" || location.pathname === "/register" || isPublicSharePage) {
+  if (location.pathname === "/auth" || location.pathname === "/register" || location.pathname === "/" || isPublicSharePage) {
     return <>{children}</>;
   }
 

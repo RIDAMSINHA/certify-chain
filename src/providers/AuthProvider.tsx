@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, AuthChangeEvent } from "@supabase/supabase-js";
@@ -19,19 +18,6 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
-// Helper function to get stored session
-const getStoredSession = () => {
-  try {
-    const storedSession = localStorage.getItem('sb-peatdsafjrwjoimjmugm-auth-token');
-    if (storedSession) {
-      return JSON.parse(storedSession);
-    }
-  } catch (error) {
-    console.error('Error parsing stored session:', error);
-  }
-  return null;
-};
-
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isIssuer, setIsIssuer] = useState(false);
@@ -49,13 +35,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (profileError) throw profileError;
       
-      if (!profile) {
-        return { isIssuer: false, name: null };
-      }
-
       return { 
-        isIssuer: profile.is_issuer || false, 
-        name: profile.name 
+        isIssuer: profile?.is_issuer || false, 
+        name: profile?.name || null 
       };
     } catch (error) {
       console.error('Error checking issuer status:', error);
@@ -64,74 +46,69 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+
   const initializeAuth = async () => {
     try {
-      // First check local storage
-      const storedSession = getStoredSession();
-      const initialUser = storedSession?.user || null;
+        const { data: { session }, error } = await supabase.auth.getSession();
+        console.log("Fetched session:", session);  // 🛠 Debugging
+        if (error) throw error;
+        const publicRoutes = ['/', '/about', '/features']; // ✅ Add all public pages
 
-      // Then verify with Supabase
-      const { data: { session }, error } = await supabase.auth.getSession();
-      console.log('Session:', session);
-      if (error) throw error;
-
-      const sessionUser = session?.user || initialUser;
-      console.log('Session User:', sessionUser);
-
-      if (sessionUser) {
-        const userIsIssuer  = sessionUser.user_metadata.is_issuer;
-        const name = sessionUser.user_metadata.name;
-        setUser(sessionUser);
-        setIsIssuer(userIsIssuer);
-
-        // Handle navigation based on profile status
-        if (!name && location.pathname !== '/register') {
-          navigate('/register');
+        const isPublicRoute = publicRoutes.includes(location.pathname);
+        
+        if (session?.user) {
+            console.log("User found:", session.user);
+            const { isIssuer, name } = await checkIssuerStatus(session.user.id);
+            setUser(session.user);
+            setIsIssuer(isIssuer);
+            if (!name && !location.pathname.startsWith('/register')) {
+                console.log("Redirecting to /register from initializeAuth");
+                navigate('/register');
+            } else if (name && !['/', '/auth', '/register'].includes(location.pathname)) {
+                console.log("Redirecting to /issue or /user from initializeAuth");
+                navigate(isIssuer ? '/issue' : '/user');
+            }
+        } 
+        else if (!isPublicRoute) {  
+            console.log("No user found, redirecting to /auth");
+            navigate('/auth');
+        } else {
+            console.log("No user found, staying on landing page");
         }
-      } else if (location.pathname !== '/auth' && location.pathname !== '/register' && 
-        !location.pathname.includes('/certificates/') && 
-        !location.pathname.includes('/userprofile/')) {
-        navigate('/auth');
-      }
     } catch (error) {
-      console.error('Error initializing auth:', error);
-      toast.error('Failed to restore session');
+        console.error("Error initializing auth:", error);
+        toast.error("Failed to restore session");
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+};
+
+
 
   const handleAuthStateChange = async (event: AuthChangeEvent, sessionUser: User | null) => {
-    console.log('Auth state changed:', event, sessionUser);
-    
     try {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (sessionUser) {
-          const userIsIssuer = sessionUser.user_metadata.is_issuer;
-          const name = sessionUser.user_metadata.name;
-          
+          const { isIssuer, name } = await checkIssuerStatus(sessionUser.id);
           setUser(sessionUser);
-          setIsIssuer(userIsIssuer);
+          setIsIssuer(isIssuer);
 
           if (!name) {
             navigate('/register');
-          } else if (location.pathname === '/auth') {
-            // Check if there's a redirect URL stored
-            const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-            if (redirectUrl) {
-              sessionStorage.removeItem('redirectAfterLogin');
-              navigate(redirectUrl);
-            } else {
-              navigate('/');
-            }
+          } else if (!['/', '/auth', '/register'].includes(location.pathname)) {
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(isIssuer ? '/issue' : '/user');
           }
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsIssuer(false);
-        // Don't redirect to auth if on a public page
-        if (!location.pathname.includes('/certificates/') && 
+        localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
+        sessionStorage.clear();
+        if (!['/', '/auth'].includes(location.pathname) && 
+            !location.pathname.includes('/certificates/') && 
             !location.pathname.includes('/userprofile/')) {
+              console.log("sign out nav");
           navigate('/auth');
         }
       }
@@ -141,47 +118,61 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Initialize auth state and set up listeners
-  useEffect(() => {
-    initializeAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      handleAuthStateChange(event, session?.user || null);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Handle route protection
-  useEffect(() => {
-    if (!loading && !user && location.pathname !== '/auth' && location.pathname !== '/register' && 
-      !location.pathname.includes('/certificates/') && 
-      !location.pathname.includes('/userprofile/')) {
-      navigate('/auth');
-    }
-  }, [loading, user, location.pathname, navigate]);
-
   const logout = async () => {
     try {
       setLoading(true);
-      await supabase.auth.signOut();
+      
+      // First attempt proper logout
+      try {
+        const { error } = await supabase.auth.signOut({ scope: 'global' });
+        if (error) throw error;
+      } catch (apiError) {
+        console.warn('Logout API failed, performing client-side cleanup:', apiError);
+      }
+      
+      // Client-side cleanup
+      localStorage.removeItem('sb-peatdsafjrwjoimjmugm-auth-token');
+      sessionStorage.clear();
       setUser(null);
       setIsIssuer(false);
       navigate('/auth');
       toast.success('Logged out successfully');
     } catch (error) {
       console.error('Error during logout:', error);
-      toast.error('Failed to log out');
+      toast.error(error.message || 'Failed to log out');
     } finally {
       setLoading(false);
     }
   };
 
-  console.log('AuthProvider state:', { user, isIssuer, loading });
+  useEffect(() => {
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      handleAuthStateChange(event, session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    
+    // Public routes that don't require authentication
+    const publicRoutes = ['/', '/auth', '/register'];
+    const publicPathPrefixes = ['/certificates/', '/userprofile/'];
+    
+    const isPublicRoute = 
+      publicRoutes.includes(location.pathname) ||
+      publicPathPrefixes.some(prefix => location.pathname.startsWith(prefix));
+
+    // ⛔ Only redirect if user is null AND route is NOT public ("/" should be accessible)
+    if (!user && !isPublicRoute) {
+      console.log("ndjknafdas");
+      navigate('/auth');
+    }
+  }, [loading, user, location.pathname, navigate]);
+
 
   return (
     <AuthContext.Provider value={{ user, isIssuer, loading, logout }}>
