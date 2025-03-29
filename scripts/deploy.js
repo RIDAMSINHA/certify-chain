@@ -6,15 +6,15 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deploying contracts with the account:", deployer.address);
 
-  const CertificateRegistry = await ethers.getContractFactory("CertificateRegistry");
-  const certificateRegistry = await CertificateRegistry.deploy();
+  const CertifyChain = await ethers.getContractFactory("CertifyChain");
+  const certifyChain = await CertifyChain.deploy();
   
   // Wait for the deployment to finish (ethers v6 style)
-  await certificateRegistry.waitForDeployment();
+  await certifyChain.waitForDeployment();
 
   // Use the 'target' property to get the deployed contract address in ethers v6
-  const address = certificateRegistry.target;
-  console.log("CertificateRegistry deployed to:", address);
+  const address = certifyChain.target;
+  console.log("CertifyChain deployed to:", address);
 
   // Save the contract address to a configuration file
   const config = {
