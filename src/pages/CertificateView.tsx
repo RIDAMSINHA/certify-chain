@@ -35,6 +35,7 @@ interface Certificate {
   created_at: string;
   public_url: string;
   metadata_uri?: string;
+  is_blockchain_only?: boolean;
 }
 
 interface MarketInsights {
@@ -90,85 +91,174 @@ const CertificateView = () => {
         throw new Error('No certificate ID provided');
       }
 
-      let certificateQuery = supabase
-        .from('certificates')
-        .select('*');
+      console.log('Fetching certificate with ID:', publicUrl);
 
-      // Try to determine if the publicUrl is a UUID or an IPFS hash
+      // Determine if the provided ID is a blockchain hash
+      const isBlockchainHash = /^(0x)?[0-9a-f]{64}$/i.test(publicUrl);
+      
+      if (isBlockchainHash) {
+        // Ensure it has 0x prefix for blockchain operations
+        const formattedId = publicUrl.startsWith('0x') ? publicUrl : `0x${publicUrl}`;
+        console.log('Detected blockchain hash, formatted as:', formattedId);
+        
+        // First directly check if this ID exists in our database
+        const { data: certByBlockchainId, error: blockchainIdError } = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('blockchain_cert_id', formattedId)
+          .maybeSingle();
+          
+        if (!blockchainIdError && certByBlockchainId) {
+          console.log('Certificate found in database by blockchain_cert_id:', certByBlockchainId);
+          setCertificate(certByBlockchainId);
+          
+          // Verify on blockchain
+          verifyOnBlockchain(formattedId);
+          
+          // Load additional data if authenticated
+          if (user) {
+            loadMarketInsights(certByBlockchainId.title, certByBlockchainId.description);
+            loadShareableHighlights(certByBlockchainId.title, certByBlockchainId.description);
+            checkUserOwnership(certByBlockchainId);
+          }
+          
+          setLoading(false);
+          return;
+        }
+        
+        // If not found in database, try to get it directly from blockchain
+        console.log("Certificate not found in database, trying blockchain directly");
+        await blockchainService.setupProvider();
+        const blockchainCertificate = await blockchainService.getCertificateDetails(formattedId);
+        
+        if (blockchainCertificate) {
+          console.log('Certificate data from blockchain:', blockchainCertificate);
+          
+          // Create a minimal certificate object from blockchain data
+          const minimalCertificate: Certificate = {
+            blockchain_cert_id: formattedId,
+            title: blockchainCertificate.name || 'Unnamed Certificate',
+            issuer_id: blockchainCertificate.issuer || 'Unknown Issuer',
+            recipient_address: blockchainCertificate.recipient || '',
+            description: `Blockchain certificate issued by ${blockchainCertificate.issuer?.substring(0, 6) || 'Unknown'}... to ${blockchainCertificate.recipient?.substring(0, 6)}...`,
+            status: blockchainCertificate.isValid ? 'issued' : 'revoked',
+            created_at: blockchainCertificate.issueDate ? new Date(blockchainCertificate.issueDate * 1000).toISOString() : new Date().toISOString(),
+            public_url: blockchainCertificate.ipfsHash || '',
+            metadata_uri: blockchainCertificate.ipfsHash || '',
+            is_blockchain_only: true
+          };
+          
+          setCertificate(minimalCertificate);
+          setBlockchainVerified(blockchainCertificate.isValid);
+          
+          // Try to find matching certificate in database using recipient and name
+          if (blockchainCertificate.recipient && blockchainCertificate.name) {
+            console.log("Looking for matching certificate in database by recipient and name");
+            const { data: certByDetails, error: detailsError } = await supabase
+              .from('certificates')
+              .select('*')
+              .eq('recipient_address', blockchainCertificate.recipient)
+              .eq('title', blockchainCertificate.name)
+              .maybeSingle();
+              
+            if (!detailsError && certByDetails) {
+              console.log('Matched certificate in database by recipient and name:', certByDetails);
+              
+              // If the matched certificate doesn't have blockchain_cert_id, update it
+              if (!certByDetails.blockchain_cert_id) {
+                console.log("Updating database certificate with blockchain ID");
+                const { error: updateError } = await supabase
+                  .from('certificates')
+                  .update({ blockchain_cert_id: formattedId })
+                  .eq('id', certByDetails.id);
+                  
+                if (updateError) {
+                  console.error('Error updating certificate with blockchain ID:', updateError);
+                } else {
+                  console.log("Database certificate updated with blockchain ID");
+                }
+              }
+              
+              // Use the database certificate with full details
+              setCertificate({
+                ...certByDetails,
+                blockchain_cert_id: formattedId
+              });
+              
+              // Load AI insights
+              if (user) {
+                loadMarketInsights(certByDetails.title, certByDetails.description);
+                loadShareableHighlights(certByDetails.title, certByDetails.description);
+                checkUserOwnership(certByDetails);
+              }
+            }
+          }
+          
+          setLoading(false);
+          return;
+        } else {
+          console.log('Certificate not found on blockchain');
+          toast.error('Certificate not found on blockchain');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // If not a blockchain hash, try to find certificate by public_url or metadata_uri
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(publicUrl);
+      
+      let certData = null;
+      let certError = null;
       
       if (isUuid) {
         // If it's a UUID format, query by public_url directly
-        certificateQuery = certificateQuery.eq('public_url', publicUrl);
+        const result = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('public_url', publicUrl)
+          .maybeSingle();
+          
+        certData = result.data;
+        certError = result.error;
       } else {
-        // If it's not a UUID, try treating it as an IPFS hash and query by metadata_uri
-        certificateQuery = certificateQuery.eq('metadata_uri', publicUrl);
+        // Try by metadata_uri
+        const result = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('metadata_uri', publicUrl)
+          .maybeSingle();
+          
+        certData = result.data;
+        certError = result.error;
       }
 
-      const { data, error } = await certificateQuery.maybeSingle();
-
-      if (error) {
-        console.error('Error fetching certificate:', error);
+      if (certError) {
+        console.error('Error fetching certificate by UUID/IPFS:', certError);
         
-        // If we get the specific UUID syntax error, try an alternative approach
-        if (error.code === '22P02' && error.message.includes('invalid input syntax for type uuid')) {
-          // Try fetching by blockchain_cert_id instead
-          const { data: certByBlockchainId, error: blockchainIdError } = await supabase
+        // If still not found, try checking if it might be an Ethereum address
+        if (publicUrl.startsWith('0x') && publicUrl.length === 42) {
+          // It might be a recipient address
+          const { data: certByRecipient, error: recipientError } = await supabase
             .from('certificates')
             .select('*')
-            .eq('blockchain_cert_id', publicUrl)
-            .maybeSingle();
+            .eq('recipient_address', publicUrl)
+            .limit(1);
             
-          if (blockchainIdError) {
-            // If we still can't find it, try checking if it might be an Ethereum address
-            if (publicUrl.startsWith('0x') && publicUrl.length === 42) {
-              // It might be a recipient address
-              const { data: certByRecipient, error: recipientError } = await supabase
-                .from('certificates')
-                .select('*')
-                .eq('recipient_address', publicUrl)
-                .limit(1);
-                
-              if (!recipientError && certByRecipient && certByRecipient.length > 0) {
-                setCertificate(certByRecipient[0]);
-                
-                // Verify on blockchain if certificate has blockchain_cert_id
-                if (certByRecipient[0].blockchain_cert_id) {
-                  verifyOnBlockchain(certByRecipient[0].blockchain_cert_id);
-                }
-                
-                // Only load AI insights if user is authenticated
-                if (user) {
-                  loadMarketInsights(certByRecipient[0].title, certByRecipient[0].description);
-                  loadShareableHighlights(certByRecipient[0].title, certByRecipient[0].description);
-                  
-                  // Check if this is the user's certificate
-                  checkUserOwnership(certByRecipient[0]);
-                }
-                
-                setLoading(false);
-                return;
-              }
-            }
-            
-            throw blockchainIdError;
-          }
-          
-          if (certByBlockchainId) {
-            setCertificate(certByBlockchainId);
+          if (!recipientError && certByRecipient && certByRecipient.length > 0) {
+            setCertificate(certByRecipient[0]);
             
             // Verify on blockchain if certificate has blockchain_cert_id
-            if (certByBlockchainId.blockchain_cert_id) {
-              verifyOnBlockchain(certByBlockchainId.blockchain_cert_id);
+            if (certByRecipient[0].blockchain_cert_id) {
+              verifyOnBlockchain(certByRecipient[0].blockchain_cert_id);
             }
             
             // Only load AI insights if user is authenticated
             if (user) {
-              loadMarketInsights(certByBlockchainId.title, certByBlockchainId.description);
-              loadShareableHighlights(certByBlockchainId.title, certByBlockchainId.description);
+              loadMarketInsights(certByRecipient[0].title, certByRecipient[0].description);
+              loadShareableHighlights(certByRecipient[0].title, certByRecipient[0].description);
               
               // Check if this is the user's certificate
-              checkUserOwnership(certByBlockchainId);
+              checkUserOwnership(certByRecipient[0]);
             }
             
             setLoading(false);
@@ -176,30 +266,32 @@ const CertificateView = () => {
           }
         }
         
-        throw error;
+        toast.error('Certificate not found in database');
+        setLoading(false);
+        return;
       }
       
-      if (!data) {
+      if (!certData) {
         toast.error('Certificate not found');
         navigate('/');
         return;
       }
 
-      setCertificate(data);
+      setCertificate(certData);
 
       // Verify on blockchain if certificate has blockchain_cert_id
-      if (data.blockchain_cert_id) {
-        verifyOnBlockchain(data.blockchain_cert_id);
+      if (certData.blockchain_cert_id) {
+        verifyOnBlockchain(certData.blockchain_cert_id);
       }
 
       // Only load AI insights if user is authenticated
       if (user) {
         // Load AI insights
-        loadMarketInsights(data.title, data.description);
-        loadShareableHighlights(data.title, data.description);
+        loadMarketInsights(certData.title, certData.description);
+        loadShareableHighlights(certData.title, certData.description);
         
         // Check if this is the user's certificate
-        checkUserOwnership(data);
+        checkUserOwnership(certData);
       }
     } catch (error) {
       console.error('Error fetching certificate:', error);
@@ -264,29 +356,29 @@ const CertificateView = () => {
   const verifyOnBlockchain = async (certId: string) => {
     setVerifyingOnBlockchain(true);
     try {
-      // Check if user is registered
-      const isRegistered = blockchainService.isUserRegistered();
-      
-      if (!isRegistered) {
-        // If not registered, show registration modal
-        toast.warning("You need to register on the blockchain to verify certificates");
-        setBlockchainVerified(false);
-        // Could add a registration modal here similar to the VerifyBlockchainCertificate component
-        return;
-      }
+      // Ensure we have the provider set up
+      await blockchainService.setupProvider();
       
       // Format the certificate ID if needed
-      if (!certId.startsWith('0x')) {
-        certId = '0x' + certId;
-      }
+      const formattedCertId = certId.startsWith('0x') ? certId : `0x${certId}`;
+      console.log(`Verifying certificate on blockchain with ID: ${formattedCertId}`);
       
-      const isValid = await blockchainService.verifyCertificate(certId);
-      setBlockchainVerified(isValid);
+      // Get certificate details directly from blockchain
+      const blockchainCertificate = await blockchainService.getCertificateDetails(formattedCertId);
       
-      if (isValid) {
-        toast.success("Certificate successfully verified on blockchain");
+      if (blockchainCertificate) {
+        console.log('Certificate found on blockchain:', blockchainCertificate);
+        setBlockchainVerified(blockchainCertificate.isValid);
+        
+        if (blockchainCertificate.isValid) {
+          toast.success("Certificate successfully verified on blockchain");
+        } else {
+          toast.warning("Certificate is revoked on the blockchain");
+        }
       } else {
-        toast.warning("Certificate validation failed on blockchain");
+        console.log('Certificate not found on blockchain');
+        setBlockchainVerified(false);
+        toast.warning("Certificate not found on blockchain");
       }
     } catch (error) {
       console.error('Error verifying on blockchain:', error);
@@ -320,7 +412,7 @@ const CertificateView = () => {
 
   const handleGoBack = () => {
     if (cameFromProfile && certificate) {
-      navigate(`/userprofile/${certificate.public_url}`);
+      navigate(`/userprofile/${certificate.blockchain_cert_id}`);
     } else {
       navigate(-1);
     }

@@ -51,13 +51,45 @@ const VerifyCertificate = () => {
       parsedShowcaseId = decodeURIComponent(parsedShowcaseId);
 
       // Split the certificate IDs (assuming they are comma-separated)
-      const certificateIds = parsedShowcaseId.split(",");
+      const certificateIds = parsedShowcaseId.split(",").map(id => {
+        // Format hex blockchain IDs correctly
+        if (/^[0-9a-f]{64}$/i.test(id)) {
+          return id.startsWith('0x') ? id : `0x${id}`;
+        }
+        return id;
+      });
 
-      // Fetch all certificates in the showcase (assuming comma-separated IDs)
-      const { data, error } = await supabase
-        .from("certificates")
-        .select("*")
-        .in("public_url", certificateIds);
+      console.log("Verifying certificate IDs:", certificateIds);
+
+      // First try to fetch by blockchain_cert_id (for blockchain hashes)
+      let data;
+      let error;
+
+      try {
+        // Try to fetch by blockchain_cert_id first (for blockchain hash IDs)
+        const result = await supabase
+          .from("certificates")
+          .select("*")
+          .in("blockchain_cert_id", certificateIds);
+        
+        data = result.data;
+        error = result.error;
+      } catch (initialError) {
+        console.error("Error fetching by blockchain_cert_id:", initialError);
+        
+        // If that fails, try by public_url (for backward compatibility)
+        try {
+          const result = await supabase
+            .from("certificates")
+            .select("*")
+            .in("public_url", certificateIds);
+          
+          data = result.data;
+          error = result.error;
+        } catch (secondError) {
+          throw secondError;
+        }
+      }
 
       if (error) throw error;
 

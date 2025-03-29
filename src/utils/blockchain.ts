@@ -8,7 +8,7 @@ import contractConfig from '../contract-config.json';
 const certifyChainABI = [
   // User registration
   "function signup(string memory _name, bool _isHR) external returns (string memory)",
-  "function users(address) external view returns (string name, bool isHR, bool isRegistered)",
+  "function users(address) external view returns (string, bool, bool, bytes32[])",
   
   // Certificate management
   "function issueCertificate(address _recipient, string memory _name, string memory _ipfsHash) external returns (string memory)",
@@ -81,17 +81,42 @@ export class BlockchainService {
     if (!this.contract || !this.currentAccount) return;
     
     try {
+      console.log("Fetching user info for account:", this.currentAccount);
       const userInfo = await this.contract.users(this.currentAccount);
-      if (userInfo) {
+      console.log("Raw user info response:", userInfo);
+      
+      // Check if the userInfo is an array or tuple
+      if (userInfo && Array.isArray(userInfo)) {
         this.userInfo = {
-          name: userInfo.name,
-          isHR: userInfo.isHR,
-          isRegistered: userInfo.isRegistered
+          name: userInfo[0] || '',
+          isHR: Boolean(userInfo[1]),
+          isRegistered: Boolean(userInfo[2])
         };
-        console.log('User info:', this.userInfo);
+        console.log('Parsed user info:', this.userInfo);
+      } else if (userInfo && typeof userInfo === 'object') {
+        // Handle object format if returned
+        this.userInfo = {
+          name: userInfo.name || userInfo[0] || '',
+          isHR: Boolean(userInfo.isHR || userInfo[1]),
+          isRegistered: Boolean(userInfo.isRegistered || userInfo[2])
+        };
+        console.log('Parsed user info:', this.userInfo);
+      } else {
+        console.warn('Invalid user info format received:', userInfo);
+        this.userInfo = {
+          name: '',
+          isHR: false,
+          isRegistered: false
+        };
       }
     } catch (error) {
       console.error('Error fetching user info:', error);
+      // Reset user info on error
+      this.userInfo = {
+        name: '',
+        isHR: false,
+        isRegistered: false
+      };
     }
   }
 
@@ -163,16 +188,64 @@ export class BlockchainService {
     }
 
     try {
-      const tx = await this.contract.signup(name, isHR);
-      await tx.wait();
-      
-      // Update user info after signup
+      // First check if the user is already registered
       await this.fetchUserInfo();
       
+      if (this.userInfo?.isRegistered) {
+        console.log('User is already registered:', this.userInfo);
+        toast.success('You are already registered');
+        return true;
+      }
+      
+      console.log(`Signing up user: ${name}, isHR: ${isHR}`);
+      const tx = await this.contract.signup(name, isHR);
+      console.log('Signup transaction sent:', tx.hash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
+      console.log('Signup transaction confirmed in block:', receipt.blockNumber);
+      
+      // Add a delay before fetching user info after signup
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update user info after signup
+      try {
+        await this.fetchUserInfo();
+        
+        // If the user info is still not showing as registered, try one more time
+        if (!this.userInfo?.isRegistered) {
+          console.log('User not showing as registered yet, retrying...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await this.fetchUserInfo();
+        }
+      } catch (error) {
+        console.error('Error fetching user info after signup:', error);
+      }
+      
+      // Even if fetchUserInfo fails, we consider the signup successful if the transaction was mined
       toast.success('Registration successful');
       return true;
     } catch (error: any) {
       console.error('Error signing up:', error);
+      
+      // Check if the error is "Already registered"
+      if (error.reason === "Already registered" || 
+          (error.message && error.message.includes("Already registered"))) {
+        console.log('User is already registered (from error)');
+        toast.success('You are already registered');
+        
+        // Update user info to reflect registration status
+        if (this.userInfo) {
+          this.userInfo.isRegistered = true;
+          this.userInfo.name = name;
+          this.userInfo.isHR = isHR;
+        } else {
+          this.userInfo = { name, isHR, isRegistered: true };
+        }
+        
+        return true;
+      }
+      
       toast.error(`Signup error: ${error.message || 'Unknown error'}`);
       return false;
     }
@@ -328,7 +401,35 @@ export class BlockchainService {
       }
     }
 
+    console.log(`Fetching certificates for recipient: ${recipientAddress}`);
+    
     try {
+      // First try direct contract method if available
+      try {
+        console.log("Trying direct contract call...");
+        if (recipientAddress.toLowerCase() === this.currentAccount?.toLowerCase()) {
+          // If fetching for the current user, use getUserCertificates
+          const userCerts = await this.getUserCertificates();
+          console.log("User certificates from contract:", userCerts);
+          
+          // Return early if we got certificates
+          if (userCerts.length > 0) {
+            const formatted = userCerts.map(cert => ({
+              certId: cert.certId,
+              ipfsHash: cert.ipfsHash || '',
+              recipient: cert.recipient,
+              name: cert.name,
+              issuer: 'Unknown', // Not provided by getUserCertificates
+              issueDate: 0,      // Not provided by getUserCertificates
+              isValid: true      // Assume valid for now
+            }));
+            return formatted;
+          }
+        }
+      } catch (directError) {
+        console.error("Error calling direct contract method:", directError);
+      }
+      
       // We need to query all certificates issued to this recipient
       // Since there's no direct method, we'll use getLogs to find certificate issue events
       
@@ -343,10 +444,17 @@ export class BlockchainService {
 
       // Get the contract address
       const contractAddress = this.contract.target;
+      console.log("Contract address for logs:", contractAddress);
       
-      // Define the event signature for CertificateIssued event
-      const eventSignature = "CertificateIssued(address,address,string,string,uint256,bytes32)";
+      // Define the event signature for CertificateIssued event - corrected to match the contract
+      const eventSignature = "CertificateIssued(address,address,bytes32,string)";
       const eventTopic = ethers.id(eventSignature);
+      console.log("Event signature:", eventSignature);
+      console.log("Event topic:", eventTopic);
+      
+      // Format address for topic filtering
+      const paddedAddress = ethers.zeroPadValue(recipientAddress.toLowerCase(), 32);
+      console.log("Padded recipient address for filter:", paddedAddress);
       
       // Create a filter for logs where the recipient matches
       const filter = {
@@ -354,9 +462,11 @@ export class BlockchainService {
         topics: [
           eventTopic,
           null, // Issuer (any)
-          ethers.zeroPadValue(recipientAddress.toLowerCase(), 32) // Recipient (specific)
+          paddedAddress // Recipient (specific)
         ]
       };
+      
+      console.log("Using filter:", JSON.stringify(filter));
       
       // Get the logs
       const logs = await this.provider.getLogs({
@@ -367,6 +477,17 @@ export class BlockchainService {
       
       console.log("Certificate logs for recipient:", logs);
       
+      // Also try without recipient filter to see all events
+      const allLogs = await this.provider.getLogs({
+        address: contractAddress,
+        topics: [eventTopic],
+        fromBlock: 0,
+        toBlock: 'latest'
+      });
+      
+      console.log("All certificate logs:", allLogs);
+      console.log("Total events found:", allLogs.length);
+      
       // If we have logs, parse them to get certificate data
       if (logs.length > 0) {
         // Parse the logs to extract certificate data
@@ -375,30 +496,68 @@ export class BlockchainService {
         // Process each log to extract certificate data
         const certificatePromises = logs.map(async (log) => {
           try {
+            console.log("Processing log:", log);
             const parsedLog = iface.parseLog({
               topics: log.topics as string[],
               data: log.data
             });
             
             if (!parsedLog || !parsedLog.args) {
+              console.error("Failed to parse log:", log);
               return null;
             }
             
-            // Extract data from the event
-            const { issuer, recipient, name, ipfsHash, issueDate, certId } = parsedLog.args;
+            console.log("Parsed log:", parsedLog);
+            console.log("Log args:", parsedLog.args);
             
-            // Verify the certificate is valid
-            const isValid = await this.verifyCertificate(certId);
+            // Extract data from the event - updated for correct event signature
+            const { issuer, recipient, certId, name } = parsedLog.args;
             
-            return {
-              certId,
-              ipfsHash,
-              recipient,
-              name,
-              issuer,
-              issueDate: Number(issueDate),
-              isValid
-            };
+            console.log(`Certificate found: ${name} (${certId})`);
+            console.log(`  Issuer: ${issuer}`);
+            console.log(`  Recipient: ${recipient}`);
+            
+            try {
+              // Get full certificate details from the contract
+              const certDetails = await this.contract?.certificates(certId);
+              
+              if (certDetails) {
+                console.log("Certificate details from contract:", certDetails);
+                return {
+                  certId,
+                  ipfsHash: certDetails.ipfsHash,
+                  recipient: certDetails.recipient,
+                  name: certDetails.name,
+                  issuer: certDetails.issuer,
+                  issueDate: Number(certDetails.issueDate),
+                  isValid: certDetails.isValid
+                };
+              }
+              
+              // Fallback to event data if contract lookup fails
+              return {
+                certId,
+                ipfsHash: '', // Not available in event
+                recipient,
+                name,
+                issuer,
+                issueDate: 0, // Not available in event
+                isValid: true // Assume valid (will be checked separately)
+              };
+            } catch (certError) {
+              console.error("Error getting certificate details:", certError);
+              
+              // Use basic info from the event
+              return {
+                certId,
+                ipfsHash: '',
+                recipient,
+                name,
+                issuer,
+                issueDate: 0,
+                isValid: true
+              };
+            }
           } catch (error) {
             console.error("Error parsing certificate log:", error);
             return null;
@@ -408,8 +567,8 @@ export class BlockchainService {
         // Wait for all certificate verifications to complete
         const certificates = await Promise.all(certificatePromises);
         
-        // Filter out any null results
-        return certificates.filter(cert => cert !== null) as {
+        // Filter out any null results and log the final list
+        const result = certificates.filter(cert => cert !== null) as {
           certId: string,
           ipfsHash: string,
           recipient: string,
@@ -418,10 +577,15 @@ export class BlockchainService {
           issueDate: number,
           isValid: boolean
         }[];
+        
+        console.log("Final certificates list:", result);
+        return result;
+      } else {
+        console.log("No certificate logs found for this recipient");
       }
       
-      // Try alternative approach by getting all user certificates from different users
-      // For now, return empty array
+      // If no certificates found through events
+      console.log("No certificates found through any method");
       return [];
     } catch (error) {
       console.error('Error getting certificates by recipient:', error);
@@ -500,6 +664,48 @@ export class BlockchainService {
       }
     } catch (error) {
       console.error('Error setting up provider:', error);
+    }
+  }
+
+  // Get certificate details directly from the blockchain by certId
+  async getCertificateDetails(certId: string): Promise<{name: string, issuer: string, recipient: string, ipfsHash: string, issueDate: number, isValid: boolean} | null> {
+    if (!this.contract) {
+      await this.initialize();
+      if (!this.contract) {
+        console.error('Blockchain connection not available');
+        return null;
+      }
+    }
+
+    try {
+      console.log(`Fetching certificate details for ID: ${certId}`);
+      
+      // Ensure the certId has 0x prefix
+      if (!certId.startsWith('0x')) {
+        certId = `0x${certId}`;
+      }
+      
+      // Call the certificates mapping directly with the certId
+      const certDetails = await this.contract.certificates(certId);
+      console.log('Raw certificate details from blockchain:', certDetails);
+      
+      if (!certDetails || !certDetails.recipient) {
+        console.log('Certificate not found on blockchain');
+        return null;
+      }
+      
+      // Format the result
+      return {
+        name: certDetails.name || '',
+        issuer: certDetails.issuer || '',
+        recipient: certDetails.recipient || '',
+        ipfsHash: certDetails.ipfsHash || '',
+        issueDate: certDetails.issueDate ? Number(certDetails.issueDate) : 0,
+        isValid: Boolean(certDetails.isValid)
+      };
+    } catch (error) {
+      console.error('Error fetching certificate details from blockchain:', error);
+      return null;
     }
   }
 }

@@ -46,24 +46,46 @@ export function VerifyBlockchainCertificate() {
       if (processedCertId.includes("/") || !processedCertId.startsWith("0x")) {
         // Extract certificate ID from URL if possible
         const urlIdMatch = processedCertId.match(/\/([^\/]+)$/);
-        const urlId = urlIdMatch ? urlIdMatch[1] : null;
+        const urlId = urlIdMatch ? urlIdMatch[1] : processedCertId; // Use the entire ID if no match
 
-        if (urlId) {
-          // Query the certificate from Supabase
-          const { data, error } = await supabase
-            .from("certificates")
-            .select("blockchain_cert_id")
-            .eq("public_url", urlId);
+        try {
+          // First try to directly verify if the ID is a blockchain ID in hex format
+          if (/^[0-9a-f]{64}$/i.test(urlId)) {
+            // It's already a valid blockchain hash, just add 0x prefix if missing
+            processedCertId = urlId.startsWith('0x') ? urlId : `0x${urlId}`;
+          } else {
+            // Try to find certificate by blockchain_cert_id first
+            let { data, error } = await supabase
+              .from("certificates")
+              .select("blockchain_cert_id")
+              .eq("blockchain_cert_id", urlId)
+              .maybeSingle();
 
-          if (error || !data || data.length === 0 || !data[0].blockchain_cert_id) {
-            toast.error("No certificate found for the provided URL");
-            setVerifying(false);
-            return;
+            // If no results, try by public_url
+            if (error || !data || !data.blockchain_cert_id) {
+              // Query the certificate from Supabase by public_url
+              const result = await supabase
+                .from("certificates")
+                .select("blockchain_cert_id")
+                .eq("public_url", urlId)
+                .maybeSingle();
+              
+              data = result.data;
+              error = result.error;
+            }
+
+            if (error || !data || !data.blockchain_cert_id) {
+              toast.error("No certificate found for the provided ID or URL");
+              setVerifying(false);
+              return;
+            }
+            
+            // Use the blockchain certificate ID from the certificate record.
+            processedCertId = data.blockchain_cert_id;
           }
-          // Use the blockchain certificate ID from the certificate record.
-          processedCertId = data[0].blockchain_cert_id;
-        } else {
-          toast.error("Invalid certificate URL format");
+        } catch (error) {
+          console.error("Error processing certificate ID:", error);
+          toast.error("Invalid certificate ID or URL format");
           setVerifying(false);
           return;
         }
