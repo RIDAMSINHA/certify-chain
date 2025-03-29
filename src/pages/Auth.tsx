@@ -45,28 +45,26 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-white py-12 px-4 sm:px-6 lg:px-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8"
+        className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-2xl shadow-gray-800"
       >
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            {isSignUp ? "Create your account" : "Sign in to your account"}
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900">
+            {isSignUp ? "Create Your Account" : "Welcome Back!"}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-sm text-gray-600">
             {!isMetaMaskLogin && (
               <>
-                {isSignUp
-                  ? "Already have an account? "
-                  : "Don't have an account? "}
+                {isSignUp ? "Already have an account? " : "Don't have an account? "}
                 <button
                   onClick={() => {
                     setIsSignUp(!isSignUp);
                     setIsMetaMaskLogin(false);
                   }}
-                  className="font-medium text-blue-600 hover:text-blue-500"
+                  className="font-medium text-blue-600 hover:text-blue-500 transition duration-200"
                 >
                   {isSignUp ? "Sign in" : "Create one"}
                 </button>
@@ -75,7 +73,7 @@ const Auth = () => {
           </p>
         </div>
 
-        <div className="mt-8 space-y-6">
+        <div className="space-y-6">
           {isMetaMaskLogin ? (
             <MetaMaskAuth onBack={() => setIsMetaMaskLogin(false)} />
           ) : (
@@ -84,36 +82,19 @@ const Auth = () => {
                 isSignUp={isSignUp}
                 onSuccess={() => {
                   if (!isSignUp) {
-                    console.log("Auth details:", user, isIssuer );
-
-                    setTimeout(() => {
-                      navigate(isIssuer ? "/issue" : "/user");
-                    }, 0);
+                    navigate("/");
                   }
                 }}
               />
 
               {!isSignUp && (
                 <div className="space-y-4">
-                  {/* <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <img
-                      src="https://www.google.com/favicon.ico"
-                      alt="Google"
-                      className="w-4 h-4 mr-2"
-                    />
-                    Sign in with Google
-                  </button> */}
-
                   <button
                     type="button"
                     onClick={() => setIsMetaMaskLogin(true)}
-                    className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 transition duration-200"
                   >
-                    <Key className="w-4 h-4 mr-2" />
+                    <Key className="w-5 h-5 mr-2" />
                     Connect Wallet
                   </button>
                 </div>
