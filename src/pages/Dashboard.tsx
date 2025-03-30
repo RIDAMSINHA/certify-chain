@@ -120,9 +120,9 @@ const Dashboard = () => {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-medium">{cert.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    {/* <p className="text-sm text-gray-500 mt-1">
                       {cert.description}
-                    </p>
+                    </p> */}
                   </div>
                   <div className="flex items-center space-x-4">
                     <span

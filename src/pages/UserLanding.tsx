@@ -100,7 +100,7 @@ export default function UserLanding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="container px-4 py-16 mx-auto">
+      <div className="container px-4 py-1 mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -123,85 +123,101 @@ export default function UserLanding() {
           </p>
         </motion.div>
 
-        {/* certs & ai */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Certs & AI Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto -mt-5">
           {/* Recent Certificates Section */}
-          <div className="bg-white shadow-lg rounded-xl p-6">
-            <h2 className="text-2xl font-semibold mb-4">Recent Certificates</h2>
+          <div className="bg-white shadow-lg rounded-2xl p-8 border border-gray-200 hover:shadow-xl transition-all duration-300">
+            <h2 className="text-3xl font-bold text-gray-900 mb-6 text-center">
+              Recent Certificates
+            </h2>
+
             <div className="space-y-4">
-              <div className="divide-y">
-                {isLoading ? (
-                  <div className="p-8 text-center text-gray-500">Loading...</div>
-                ) : certificates.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">No certificates found</div>
-                ) : (
-                  certificates.map((cert, index) => (
+              {isLoading ? (
+                <div className="p-8 text-center text-gray-500 animate-pulse">
+                  Loading...
+                </div>
+              ) : certificates.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  No certificates found
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {certificates.map((cert, index) => (
                     <motion.div
                       key={cert.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="p-6 hover:bg-gray-50 transition-colors"
+                      className="p-6 bg-gray-50 rounded-lg shadow-sm hover:shadow-md transition-transform transform hover:-translate-y-1 border border-gray-200"
                     >
-                      <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-blue-100 text-blue-600 font-bold text-lg h-10 w-10 flex items-center justify-center rounded-full shadow">
+                          {cert.title.charAt(0)}
+                        </div>
                         <div>
-                          <h3 className="font-medium">{cert.title}</h3>
+                          <h3 className="text-lg font-semibold text-gray-800">
+                            {cert.title}
+                          </h3>
                           <p className="text-sm text-gray-500 mt-1">
                             {cert.timestamp}
                           </p>
                         </div>
-
                       </div>
                     </motion.div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
+
             <button
-              className="text-blue-500 font-medium hover:underline"
+              className="mt-6 w-full text-blue-600 font-medium hover:text-blue-700 transition duration-300 text-center"
               onClick={() => navigate("/userdashboard")}
             >
-              View all Certificates
+              View all Certificates →
             </button>
           </div>
 
           {/* AI Analysis Section */}
-          <div className="bg-white shadow-lg rounded-xl p-6">
-            <h2 className="text-2xl font-semibold mb-4">Analyze your Profile with AI</h2>
-            {
-              (promptSent === false)
-                ?
-                <>
-                  <input
-                    placeholder="Job Role Applying For"
-                    onChange={(e) => {
-                      setJobRole(e.target.value)
-                    }
-                    }
-                  />
-                  <button onClick={() => { promptForAnalysis(allCerts, jobRole) }}>Analyze</button>
-                </>
+          <div className="bg-white shadow-lg rounded-2xl p-8 border border-gray-200 hover:shadow-xl transition-all duration-300">
+            <h2 className="text-3xl font-bold text-gray-900 mb-6 text-center">
+              Analyze Your Profile with AI
+            </h2>
 
-
-                :
-
-                (receivedAnalysis === true) ?
-                  <div className="bg-gray-100 p-6 rounded-lg shadow-md">
-                    <ul className="list-disc pl-5 text-gray-700">
-                      {aiAnalysis.map((item, index) => (
-                        <li key={index} className="mb-2">
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div> :
-                  <p>Loading...</p>
-
-
-            }
-
-
-
+            {!promptSent ? (
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="Job Role Applying For"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none transition-shadow"
+                  onChange={(e) => setJobRole(e.target.value)}
+                />
+                <button
+                  className="w-full bg-gray-600 text-white font-semibold py-3 rounded-lg hover:bg-gray-700 transition duration-300 shadow"
+                  onClick={() => promptForAnalysis(allCerts, jobRole)}
+                >
+                  Analyze
+                </button>
+              </div>
+            ) : receivedAnalysis ? (
+              <div className="bg-gray-50 p-6 rounded-lg shadow-lg border border-gray-200">
+                <ul className="pl-5 space-y-2 text-gray-700">
+                  {aiAnalysis.map((item, index) => (
+                    <li
+                      key={index}
+                      className={`leading-relaxed ${
+                        index >= 2 ? "list-disc" : ""
+                      }`}
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center font-medium animate-pulse">
+                Analyzing your profile...
+              </p>
+            )}
           </div>
         </div>
       </div>

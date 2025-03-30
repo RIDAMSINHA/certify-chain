@@ -56,18 +56,14 @@ const Layout = ({ children }: LayoutProps) => {
   };
 
   const menuItems = [
-    { 
-      path: isIssuer ? "/issuer" : "/user", 
-      label: "Home",
-      icon: Home 
-      },
-    {
-      path: isIssuer ? "/dashboard" : "/userdashboard",
-      label: "Dashboard",
-      icon: LayoutDashboard,
-    },
+    ...(!isIssuer
+      ? [{ path: "/user", label: "Home", icon: Home }]
+      : []),
+      ...(!isIssuer
+        ? [{ path: "/userdashboard", label: "Dashboard", icon: FilePlus }]
+        : []),
     ...(isIssuer
-      ? [{ path: "/issue", label: "Issue Certificate", icon: FilePlus }]
+      ? [{ path: "/issue", label: "Issue Certificate", icon: LayoutDashboard }]
       : []),
     { path: "/verify", label: "Verify Certificate", icon: ShieldCheck },
   ];

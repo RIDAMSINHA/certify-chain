@@ -41,16 +41,9 @@ export default function LandingPage(){
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-3xl mx-auto mb-20"
+          className="text-center max-w-3xl mx-auto mb-20 mt-5"
         >
-          <motion.div
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 0.5 }}
-            className="inline-block mb-4 px-4 py-1.5 bg-slate-900 text-white text-sm rounded-full"
-          >
-           Secure & Verified
-          </motion.div>
+          
           <h1 className="text-5xl font-bold mb-6 tracking-tight">
             Manage and Verify Certificates Seamlessly
           </h1>

@@ -294,7 +294,7 @@ const IssueCertificate = () => {
         recipient_name: "",
         ipfshash: "",
       });
-      navigate("/dashboard");
+      fetchIssuedCertificates();
     } catch (error) {
       console.error("Error issuing certificate:", error);
       toast.error(error.message || "Failed to issue certificate");
